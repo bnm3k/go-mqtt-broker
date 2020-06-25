@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 )
 
 // spyPayloadSizeDecoder used to 'spy' on decode fn
@@ -45,28 +46,30 @@ func TestReadWritePayloadSize(t *testing.T) {
 	for _, cs := range cases {
 		buf.Reset()
 		bytesWritten, err := writePayloadSize(buf, cs.from)
-		if err != nil {
-			t.Errorf("Unexpected err should be non-nil %v", err)
-		}
-		if bytesWritten != cs.expectedBytesWritten {
-			t.Errorf("encode does not write expected number of bytes for %d.\nUsed %d byte(s), expected to use %d byte(s) instead", cs.from, bytesWritten, cs.expectedBytesWritten)
-		}
-		if !bytes.Equal(buf.Bytes(), cs.to) {
-			t.Errorf("encode does not encode number(%d) to expected bytes, got %v want %v", cs.from, buf, cs.to)
-		}
+		require.NoErrorf(t, err, "Unexpected err should be nil %v", err)
+
+		require.Equal(t, cs.expectedBytesWritten, bytesWritten,
+			"encode does not write expected number of bytes for %d.\nUsed %d byte(s), expected to use %d byte(s) instead",
+			cs.from, bytesWritten, cs.expectedBytesWritten)
+
+		require.Equal(t, cs.to, buf.Bytes(),
+			"encode does not encode number(%d) to expected bytes, got %v want %v",
+			cs.from, buf.Bytes(), cs.to)
 
 		s := &spyReadPayloadSize{r: buf}
 		retrievedPayloadSize, err := readPayloadSize(s)
-		if err != nil {
-			err = errors.Wrap(err, fmt.Sprintf("num to be encoded(%d), bytes count(%d)", cs.from, bytesWritten))
-			t.Errorf("error should be nil since encoded payload size is valid.\n Err: %s", err)
-		}
-		if retrievedPayloadSize != cs.from {
-			t.Errorf("decodePayloadSize(encode(n))!= n. Got %d, want %d", retrievedPayloadSize, cs.from)
-		}
-		if s.numberOfBytesReadSoFar != bytesWritten {
-			t.Errorf("number of bytes read so far is more/less than expected. Got %d, want %d", s.numberOfBytesReadSoFar, bytesWritten)
-		}
+		require.NoErrorf(t,
+			errors.Wrap(err, fmt.Sprintf("num to be encoded(%d), bytes count(%d)", cs.from, bytesWritten)),
+			"error should be nil since encoded payload size is valid.")
+
+		require.Equal(t, cs.from, retrievedPayloadSize,
+			"decodePayloadSize(encode(n))!= n. Got %d, want %d",
+			retrievedPayloadSize, cs.from)
+
+		require.Equal(t, bytesWritten, s.numberOfBytesReadSoFar,
+			"number of bytes read so far is more/less than expected. Got %d, want %d",
+			s.numberOfBytesReadSoFar, bytesWritten)
+
 	}
 }
 
@@ -81,8 +84,9 @@ func TestReadInvalidPayloadSize(t *testing.T) {
 	}
 	for _, cs := range cases {
 		_, err := readPayloadSize(bytes.NewBuffer(cs.encoded))
-		if err != errMalformedRemainingSize {
-			t.Errorf("error should be of value errMalformedRemainingSize, instead is %v", err)
-		}
+		require.Error(t, err,
+			"payload size is invalid, should return an error")
+		require.EqualError(t, err, errMalformedRemainingSize.Error(),
+			"error should be of value errMalformedRemainingSize, instead is: %v", err)
 	}
 }
