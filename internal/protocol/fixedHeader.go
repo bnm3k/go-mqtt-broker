@@ -25,6 +25,16 @@ func writePayloadSize(w io.ByteWriter, n uint32) (bytesWritten int, err error) {
 	return
 }
 
+func writeFixedHeader(w io.ByteWriter, ctrl byte, payloadSize uint32) (bytesWritten int, err error) {
+	err = w.WriteByte(ctrl)
+	if err != nil {
+		return
+	}
+	bytesWritten, err = writePayloadSize(w, payloadSize)
+	bytesWritten++
+	return
+}
+
 var errMalformedRemainingSize error = fmt.Errorf("Malformed remaining size. 4th byte's 8th bit indicates continue")
 
 // if last byte read indicates that more bytes should be read
@@ -64,4 +74,13 @@ func readPayloadSize(r io.ByteReader) (val uint32, err error) {
 		bytesRead++
 	}
 	return val, nil
+}
+
+func readFixedHeader(r io.ByteReader) (ctrl byte, payloadSize uint32, err error) {
+	ctrl, err = r.ReadByte()
+	if err != nil {
+		return
+	}
+	payloadSize, err = readPayloadSize(r)
+	return
 }
