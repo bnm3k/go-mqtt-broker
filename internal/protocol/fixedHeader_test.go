@@ -52,6 +52,9 @@ func TestReadWritePayloadSize(t *testing.T) {
 			"encode does not write expected number of bytes for %d.\nUsed %d byte(s), expected to use %d byte(s) instead",
 			cs.from, bytesWritten, cs.expectedBytesWritten)
 
+		require.Equal(t, bytesWritten, lenPayloadSizeField(int(cs.from)),
+			"lenPayloadSizeField does not return correct expected len of bytes field should take")
+
 		require.Equal(t, cs.to, buf.Bytes(),
 			"encode does not encode number(%d) to expected bytes, got %v want %v",
 			cs.from, buf.Bytes(), cs.to)

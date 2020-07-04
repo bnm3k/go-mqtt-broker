@@ -9,6 +9,18 @@ import (
 
 const maxPayloadSize = 268435455
 
+func lenPayloadSizeField(n int) int {
+	bytesToWrite := 0
+	for {
+		n = n >> 7
+		bytesToWrite++
+		if n == 0 {
+			break
+		}
+	}
+	return bytesToWrite
+}
+
 func writePayloadSize(w io.ByteWriter, n uint32) (bytesWritten int, err error) {
 	for {
 		encodedByte := byte(n) % 0x80
