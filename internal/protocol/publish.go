@@ -1,4 +1,4 @@
-package control
+package protocol
 
 type publishPacket struct {
 	dup              bool
