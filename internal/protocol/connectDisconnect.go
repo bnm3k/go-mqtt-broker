@@ -1,28 +1,91 @@
 package protocol
 
 import (
+	"fmt"
 	"io"
 )
 
 /*
 	CONNECT PACKET
 */
-type connectPacket struct {
-	protocolLevel       byte
-	loginDetailsPresent bool
+
+// ConnectPacket holds the in-application deserialization
+// of a ConnectPacket
+type ConnectPacket struct {
+	loginDetailsPresent bool // ok
 	willRetain          bool
 	willQoS             byte
-	willPresent         bool
-	cleanSession        bool
-	keepAlive           uint16
-	clientIdentifier    []byte
+	willFlag            bool
+	cleanSession        bool   // ok
+	keepAlive           uint16 // ok
+	clientIdentifier    []byte // ok
 	willTopic           []byte
 	willMessage         []byte
-	username            []byte
-	password            []byte
+	username            []byte // ok
+	password            []byte // ok
 }
 
-func (p *connectPacket) Read(b []byte) (n int, err error) {
+// ConnectPacketConfig is more of a necessary evil,
+// it is used to configure the connect packet during
+// instantiation. The alternative was either to  have
+// a constructor with lots and lots of parameters or to make
+// fields in ConnectPacket public which I tried to avoid
+// since the flags too must be made public and that places more
+// burden on the end user to make sure the flags set are consistent
+// with the fields present.
+// The non-primitive ConnectPacketConfig fields should not be modified
+// any further after a ConnectPacket is instantiated from the config since
+// the constructor shallow copies the fields.
+// As a sidenote as to why this is a necessary evil, check out the article
+// below, config objects are kind of an antipattern
+// https://middlemost.com/object-lifecycle/
+type ConnectPacketConfig struct {
+	ClientIdentifier, Username, Pass []byte
+	KeepAliveSeconds                 uint16
+	ShouldCleanSession               bool
+	WillTopic, WillMessage           []byte
+	WillQoS                          byte
+	WillRetain                       bool
+}
+
+// NewConnectPacket instantiates a ConnectPacket based on the config object passed.
+// To be used by the client rather than the server.
+// A nil or zero length cfg.ClientIdentifier indicates that the client intends
+// for the broker to assign a unique client identifier for it.
+// If the cfg.Username is nil or of len 0, the  username and password flags
+// will not be set, plus the respective strings will be of 0 length.
+// The Will Flag is set iff both the cfg.WillTopic and cfg.WillMessage are
+// of nonzero length. If the WillQoS is invalid, ie not equal to 0x0, 0x1, 0x2
+// then an error is returned.
+func NewConnectPacket(cfg *ConnectPacketConfig) (*ConnectPacket, error) {
+	// validate config
+	if cfg.WillQoS > 2 {
+		return nil, fmt.Errorf("Invalid QoS %d. Should be 0x0, 0x1 or 0x2", cfg.WillQoS)
+	}
+	p := new(ConnectPacket)
+	// setup credentials
+	p.clientIdentifier = cfg.ClientIdentifier
+	if len(cfg.Username) > 0 {
+		p.loginDetailsPresent = true
+		p.username = cfg.Username
+		p.password = cfg.Pass
+	}
+	// setup will
+	if len(cfg.WillTopic) > 0 && len(cfg.WillMessage) > 0 {
+		p.willFlag = true
+		p.willQoS = cfg.WillQoS
+		p.willRetain = cfg.WillRetain
+		p.willTopic = cfg.WillTopic
+		p.willMessage = cfg.WillMessage
+	}
+
+	// setup other configurations
+	p.keepAlive = cfg.KeepAliveSeconds
+	p.cleanSession = cfg.ShouldCleanSession
+	return p, nil
+}
+
+func (p *ConnectPacket) Read(b []byte) (n int, err error) {
 	lenConnectPacket := p.Len()
 	if len(b) < lenConnectPacket {
 		return 0, io.ErrShortBuffer
@@ -43,7 +106,7 @@ func (p *connectPacket) Read(b []byte) (n int, err error) {
 	buf.WriteByte(byte(p.keepAlive))
 	// write payload
 	buf.writeMQTTStr(p.clientIdentifier)
-	if p.willPresent {
+	if p.willFlag {
 		buf.writeMQTTStr(p.willTopic)
 		buf.writeMQTTStr(p.willMessage)
 	}
@@ -54,7 +117,7 @@ func (p *connectPacket) Read(b []byte) (n int, err error) {
 	return buf.bytesWritten(), io.EOF
 }
 
-func (p *connectPacket) getConnectFlagsByte() byte {
+func (p *ConnectPacket) getConnectFlagsByte() byte {
 	var b byte = 0
 	if p.loginDetailsPresent { // username & password present
 		b = b | 0xC0 // 0x80 + 0x40 for both username & pass
@@ -63,7 +126,7 @@ func (p *connectPacket) getConnectFlagsByte() byte {
 		b = b | 0x20
 	}
 	b = b | p.willQoS
-	if p.willPresent {
+	if p.willFlag {
 		b = b | 0x04
 	}
 	if p.cleanSession {
@@ -72,7 +135,7 @@ func (p *connectPacket) getConnectFlagsByte() byte {
 	return b
 }
 
-func (p *connectPacket) payloadLen() int {
+func (p *ConnectPacket) payloadLen() int {
 	payloadLen := 10 + // variable Header
 		2 + len(p.clientIdentifier) +
 		2 + len(p.willTopic) +
@@ -82,7 +145,8 @@ func (p *connectPacket) payloadLen() int {
 	return payloadLen
 }
 
-func (p *connectPacket) Len() int {
+// Len returns the total number of bytes the ConnectPacket will take up
+func (p *ConnectPacket) Len() int {
 	payloadLen := p.payloadLen()
 	return 1 + // control pkt type + flags
 		lenPayloadSizeField(payloadLen) + // remaining Length field
