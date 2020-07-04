@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-var maxPayloadSize int = 268435455
+const maxPayloadSize = 268435455
 
 func writePayloadSize(w io.ByteWriter, n uint32) (bytesWritten int, err error) {
 	for {

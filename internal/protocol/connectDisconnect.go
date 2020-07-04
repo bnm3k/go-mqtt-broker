@@ -1,5 +1,10 @@
 package protocol
 
+import "io"
+
+/*
+	CONNECT PACKET
+*/
 type connectPacket struct {
 	protocolLevel    byte
 	usernamePresent  bool
@@ -16,9 +21,85 @@ type connectPacket struct {
 	password         []byte
 }
 
+/*
+	CONNACK PACKET
+*/
 type connackPacket struct {
 	sessionPresent    bool
-	connectReturnCode byte
+	connectReturnCode connectReturnCode
 }
 
+type connectReturnCode byte
+
+const (
+	connAccepted connectReturnCode = iota
+	connRefusedUnacceptableProtocol
+	connRefusedIdentifierRejected
+	connRefusedServerUnavailable
+	connRefusedBadUsernamePass
+	connRefusedNotAuthorized
+)
+
+func (code connectReturnCode) String() string {
+	switch code {
+	case connAccepted:
+		return "Connection accepted"
+	case connRefusedUnacceptableProtocol:
+		return "The Server does not support the level of the MQTT protocol requested by the Client"
+	case connRefusedIdentifierRejected:
+		return "The Client identifier is correct UTF-8 but not allowed by the Server"
+	case connRefusedServerUnavailable:
+		return "The Network Connection has been made but the MQTT service is unavailable"
+	case connRefusedBadUsernamePass:
+		return "The data in the user name or password is malformed"
+	case connRefusedNotAuthorized:
+		return "The Client is not authorized to connect"
+	default:
+		return "Reserved for future use"
+	}
+}
+
+func (p *connackPacket) Read(buf []byte) (n int, err error) {
+	if len(buf) < 4 { // requires 2 bytes ? or more
+		return 0, io.ErrShortBuffer
+	}
+	buf[0] = connack<<4 | 0x0 // ctrl pkt type + flags(reserved)
+	buf[1] = 2                // remaining length
+	if p.sessionPresent {     // session present
+		buf[2] = 1
+	} else {
+		buf[2] = 0
+	}
+	buf[3] = byte(p.connectReturnCode)
+	return 4, io.EOF
+}
+
+func (p *connackPacket) Len(buf []byte) int {
+	// takes up 4 bytes, 2 for fixed header, 2 for variable header
+	return 4
+}
+
+func (p *connackPacket) ConnectionAccepted() (ok bool, description string) {
+	ok = p.connectReturnCode == connAccepted
+	description = p.connectReturnCode.String()
+	return
+}
+
+/*
+	DISCONNECT PACKET
+*/
 type disconnectPacket struct{}
+
+func (p *disconnectPacket) Read(buf []byte) (n int, err error) {
+	if len(buf) < 2 { // requires 2 bytes ? or more
+		return 0, io.ErrShortBuffer
+	}
+	buf[0] = disconnect<<4 | 0x0 // ctrl pkt type + flags(reserved)
+	buf[1] = 0                   // remaining length, zero
+	return 2, io.EOF
+}
+
+func (p *disconnectPacket) Len() int {
+	// disconnect packets are always 2 bytes
+	return 2
+}

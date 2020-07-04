@@ -3,20 +3,20 @@ package protocol
 type controlPacketType uint8
 
 const (
-	connect     controlPacketType = 1
-	connack                       = 2
-	publish                       = 3
-	puback                        = 4
-	pubrec                        = 5
-	pubrel                        = 6
-	pubcomp                       = 7
-	subscribe                     = 8
-	suback                        = 9
-	unsubscribe                   = 10
-	unsuback                      = 11
-	pingreq                       = 12
-	pingresp                      = 13
-	disconnect                    = 14
+	connect uint8 = iota + 1
+	connack
+	publish
+	puback
+	pubrec
+	pubrel
+	pubcomp
+	subscribe
+	suback
+	unsubscribe
+	unsuback
+	pingreq
+	pingresp
+	disconnect
 )
 
 func (c controlPacketType) String() string {
@@ -28,7 +28,7 @@ func (c controlPacketType) String() string {
 		"PINGREQ", "PINGRESP", "DISCONNECT", "Reserved"}[c]
 }
 
-func (c controlPacketType) getReservedFlags() uint8 {
+func getReservedFlags(c uint8) uint8 {
 	if c == pubrel || c == subscribe || c == unsubscribe {
 		return 0x02
 	} // for rest kind of packets
