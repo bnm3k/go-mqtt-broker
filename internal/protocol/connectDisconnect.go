@@ -1,6 +1,8 @@
 package protocol
 
-import "io"
+import (
+	"io"
+)
 
 /*
 	CONNECT PACKET
@@ -19,6 +21,30 @@ type connectPacket struct {
 	willMessage      []byte
 	username         []byte
 	password         []byte
+}
+
+func (p *connectPacket) Read(b []byte) (n int, err error) {
+	lenConnectPacket := p.Len()
+	if len(b) < lenConnectPacket {
+		return 0, io.ErrShortBuffer
+	}
+	if lenConnectPacket > maxPayloadSize {
+		return 0, ErrInvalidPacket
+	}
+
+	return lenConnectPacket, io.EOF
+}
+
+func (p *connectPacket) Len() int {
+	payloadLen := 10 + // variable Header
+		2 + len(p.clientIdentifier) +
+		2 + len(p.willTopic) +
+		2 + len(p.willMessage) +
+		2 + len(p.username) +
+		2 + len(p.password)
+	return 1 + // control pkt type + flags
+		lenPayloadSizeField(payloadLen) + // remaining Length field
+		payloadLen // variable header + payload
 }
 
 /*
@@ -59,22 +85,22 @@ func (code connectReturnCode) String() string {
 	}
 }
 
-func (p *connackPacket) Read(buf []byte) (n int, err error) {
-	if len(buf) < 4 { // requires 2 bytes ? or more
+func (p *connackPacket) Read(b []byte) (n int, err error) {
+	if len(b) < 4 { // requires 2 bytes ? or more
 		return 0, io.ErrShortBuffer
 	}
-	buf[0] = connack<<4 | 0x0 // ctrl pkt type + flags(reserved)
-	buf[1] = 2                // remaining length
-	if p.sessionPresent {     // session present
-		buf[2] = 1
+	b[0] = connack<<4 | 0x0 // ctrl pkt type + flags(reserved)
+	b[1] = 2                // remaining length
+	if p.sessionPresent {   // session present
+		b[2] = 1
 	} else {
-		buf[2] = 0
+		b[2] = 0
 	}
-	buf[3] = byte(p.connectReturnCode)
+	b[3] = byte(p.connectReturnCode)
 	return 4, io.EOF
 }
 
-func (p *connackPacket) Len(buf []byte) int {
+func (p *connackPacket) Len() int {
 	// takes up 4 bytes, 2 for fixed header, 2 for variable header
 	return 4
 }
@@ -90,12 +116,12 @@ func (p *connackPacket) ConnectionAccepted() (ok bool, description string) {
 */
 type disconnectPacket struct{}
 
-func (p *disconnectPacket) Read(buf []byte) (n int, err error) {
-	if len(buf) < 2 { // requires 2 bytes ? or more
+func (p *disconnectPacket) Read(b []byte) (n int, err error) {
+	if len(b) < 2 { // requires 2 bytes ? or more
 		return 0, io.ErrShortBuffer
 	}
-	buf[0] = disconnect<<4 | 0x0 // ctrl pkt type + flags(reserved)
-	buf[1] = 0                   // remaining length, zero
+	b[0] = disconnect<<4 | 0x0 // ctrl pkt type + flags(reserved)
+	b[1] = 0                   // remaining length, zero
 	return 2, io.EOF
 }
 

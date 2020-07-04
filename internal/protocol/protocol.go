@@ -1,6 +1,12 @@
 package protocol
 
-import "io"
+import (
+	"errors"
+	"io"
+)
+
+// ErrInvalidPacket ...
+var ErrInvalidPacket = errors.New("Packet content is invalid")
 
 func check(condition bool, message string) {
 	if condition == false {
