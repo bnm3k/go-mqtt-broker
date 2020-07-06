@@ -88,7 +88,9 @@ func readPayloadSize(r io.ByteReader) (val uint32, err error) {
 	return val, nil
 }
 
-func readFixedHeader(r io.ByteReader) (ctrl byte, payloadSize uint32, err error) {
+// ReadFixedHeader retrieves both the ctrl byte(type + flags) and payloadSize from
+// an io.ByteReader such as net.Conn
+func ReadFixedHeader(r io.ByteReader) (ctrl byte, payloadSize uint32, err error) {
 	ctrl, err = r.ReadByte()
 	if err != nil {
 		return
