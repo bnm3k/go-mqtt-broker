@@ -1,22 +1,23 @@
 package protocol
 
-import "io"
-
 /*
 	PING REQUEST PACKET
 */
-type pingreqPacket struct{}
+type PingreqPacket struct{}
 
-func (p *pingreqPacket) Read(b []byte) (n int, err error) {
-	if len(b) < 2 { // requires 2 bytes ? or more
-		return 0, io.ErrShortBuffer
+func (p *PingreqPacket) Serialize(b []byte) ([]byte, error) {
+	if b == nil {
+		b = make([]byte, 2)
 	}
-	b[0] = pingreq<<4 | 0x0 // ctrl pkt type + flags(reserved)
+	if len(b) < 2 { // requires 2 bytes ? or more
+		return nil, ErrShortBuffer
+	}
+	b[0] = Pingreq<<4 | 0x0 // ctrl pkt type + flags(reserved)
 	b[1] = 0                // no payload
-	return 2, io.EOF
+	return b[:2], nil
 }
 
-func (p *pingreqPacket) Len() int {
+func (p *PingreqPacket) Len() int {
 	// takes up 2 bytes
 	return 2
 }
@@ -24,18 +25,21 @@ func (p *pingreqPacket) Len() int {
 /*
 	PING RESPONSE PACKET
 */
-type pingrespPacket struct{}
+type PingrespPacket struct{}
 
-func (p *pingrespPacket) Read(b []byte) (n int, err error) {
-	if len(b) < 2 { // requires 2 bytes ? or more
-		return 0, io.ErrShortBuffer
+func (p *PingrespPacket) Serialize(b []byte) ([]byte, error) {
+	if b == nil {
+		b = make([]byte, 2)
 	}
-	b[0] = pingresp<<4 | 0x0 // ctrl pkt type + flags(reserved)
+	if len(b) < 2 { // requires 2 bytes ? or more
+		return nil, ErrShortBuffer
+	}
+	b[0] = Pingresp<<4 | 0x0 // ctrl pkt type + flags(reserved)
 	b[1] = 0                 // no payload
-	return 2, io.EOF
+	return b[:2], nil
 }
 
-func (p *pingrespPacket) Len() int {
+func (p *PingrespPacket) Len() int {
 	// takes up 2 bytes
 	return 2
 }

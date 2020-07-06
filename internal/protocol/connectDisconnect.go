@@ -1,8 +1,8 @@
 package protocol
 
 import (
+	"bytes"
 	"fmt"
-	"io"
 )
 
 /*
@@ -12,17 +12,18 @@ import (
 // ConnectPacket holds the in-application deserialization
 // of a ConnectPacket
 type ConnectPacket struct {
-	loginDetailsPresent bool // ok
-	willRetain          bool
-	willQoS             byte
-	willFlag            bool
-	cleanSession        bool   // ok
-	keepAlive           uint16 // ok
-	clientIdentifier    []byte // ok
-	willTopic           []byte
-	willMessage         []byte
-	username            []byte // ok
-	password            []byte // ok
+	usernamePresent  bool
+	passwordPresent  bool
+	willRetain       bool
+	willQoS          byte
+	willFlag         bool
+	cleanSession     bool   // ok
+	keepAlive        uint16 // ok
+	clientIdentifier []byte // ok
+	willTopic        []byte
+	willMessage      []byte
+	username         []byte // ok
+	password         []byte // ok
 }
 
 // ConnectPacketConfig is more of a necessary evil,
@@ -40,12 +41,12 @@ type ConnectPacket struct {
 // below, config objects are kind of an antipattern
 // https://middlemost.com/object-lifecycle/
 type ConnectPacketConfig struct {
-	ClientIdentifier, Username, Pass []byte
-	KeepAliveSeconds                 uint16
-	ShouldCleanSession               bool
-	WillTopic, WillMessage           []byte
-	WillQoS                          byte
-	WillRetain                       bool
+	ClientIdentifier, Username, Password []byte
+	KeepAliveSeconds                     uint16
+	ShouldCleanSession                   bool
+	WillTopic, WillMessage               []byte
+	WillQoS                              byte
+	WillRetain                           bool
 }
 
 // NewConnectPacket instantiates a ConnectPacket based on the config object passed.
@@ -63,13 +64,17 @@ func NewConnectPacket(cfg *ConnectPacketConfig) (*ConnectPacket, error) {
 		return nil, fmt.Errorf("Invalid QoS %d. Should be 0x0, 0x1 or 0x2", cfg.WillQoS)
 	}
 	p := new(ConnectPacket)
-	// setup credentials
+	// setup username & password
 	p.clientIdentifier = cfg.ClientIdentifier
 	if len(cfg.Username) > 0 {
-		p.loginDetailsPresent = true
+		p.usernamePresent = true
 		p.username = cfg.Username
-		p.password = cfg.Pass
+		if len(cfg.Password) > 0 {
+			p.passwordPresent = true
+			p.password = cfg.Password
+		}
 	}
+
 	// setup will
 	if len(cfg.WillTopic) > 0 && len(cfg.WillMessage) > 0 {
 		p.willFlag = true
@@ -85,22 +90,28 @@ func NewConnectPacket(cfg *ConnectPacketConfig) (*ConnectPacket, error) {
 	return p, nil
 }
 
-func (p *ConnectPacket) Read(b []byte) (n int, err error) {
+var protocolVersion []byte = []byte{0, 4, 'M', 'Q', 'T', 'T', 0x04}
+
+func (p *ConnectPacket) Serialize(b []byte) ([]byte, error) {
 	lenConnectPacket := p.Len()
+	if b == nil {
+		b = make([]byte, lenConnectPacket)
+	}
 	if len(b) < lenConnectPacket {
-		return 0, io.ErrShortBuffer
+		return nil, ErrShortBuffer
 	}
 	if lenConnectPacket > maxPayloadSize {
-		return 0, ErrInvalidPacket
+		return nil, ErrInvalidPacket
 	}
 	// write fixed header
 	buf := newWritableBuf(b)
-	buf.WriteByte(connect<<4 | 0x0)
+	buf.WriteByte(Connect<<4 | 0x0)
 	writePayloadSize(buf, uint32(p.payloadLen()))
 	// write protocol name + level version 3.11
-	buf.Write([]byte{0, 4, 'M', 'Q', 'T', 'T', 0x04})
+	buf.Write(protocolVersion)
 	// write connect flags
-	buf.WriteByte(p.getConnectFlagsByte())
+	flags := p.getConnectFlagsByte()
+	buf.WriteByte(flags)
 	// write keep alive (msb then lsb)
 	buf.WriteByte(byte(p.keepAlive >> 8))
 	buf.WriteByte(byte(p.keepAlive))
@@ -110,22 +121,118 @@ func (p *ConnectPacket) Read(b []byte) (n int, err error) {
 		buf.writeMQTTStr(p.willTopic)
 		buf.writeMQTTStr(p.willMessage)
 	}
-	if p.loginDetailsPresent {
+	if p.usernamePresent {
 		buf.writeMQTTStr(p.username)
-		buf.writeMQTTStr(p.password)
+		if p.passwordPresent {
+			buf.writeMQTTStr(p.password)
+		}
 	}
-	return buf.bytesWritten(), io.EOF
+
+	return b[:buf.bytesWritten()], nil
+}
+
+// DeserializeConnectPktPayload parses the contents of a bytes slice and returns
+// a ConnectPacket as required. Panics, if p []byte is shorter than it needs to be,
+func DeserializeConnectPktPayload(p []byte) (*ConnectPacket, error) {
+	var err error
+	readStr := func(from []byte, startPos int) (str []byte, nextPos int) {
+		if err == nil {
+			from = from[startPos:]
+			if len(from) < 2 {
+				err = ErrInvalidPacket
+				return
+			}
+			strLen := (int(from[0]) << 8) + int(from[1])
+			if len(from) < strLen+2 {
+				err = ErrInvalidPacket
+				return
+			}
+			if strLen > 0 {
+				str = from[2 : 2+strLen]
+			}
+			nextPos = startPos + 2 + strLen
+		}
+		return
+	}
+	// payload must be at least 12 bytes to be valid
+	if len(p) < 12 {
+		return nil, ErrInvalidPacket
+	}
+	// protocol version must be valid
+	if !bytes.Equal(p[:7], protocolVersion) {
+		return nil, ErrInvalidPacket
+	}
+	flags := p[7]
+	// reserved flag bit should not be set
+	if flags&0x01 != 0 {
+		return nil, ErrInvalidPacket
+	}
+	// password flag bit set iff username flag bit set
+	usernamePresent, passwordPresent := (flags&0x80) == 0x80, (flags&0x40) == 0x40
+	if !usernamePresent && passwordPresent {
+		return nil, ErrInvalidPacket
+	}
+	// qos must be 0, 1 or 2
+	willQoS := (flags >> 3) & 0x03
+	if willQoS > 2 {
+		return nil, ErrInvalidPacket
+	}
+
+	// if willFlag set to 0, willQoS and willRetain must be zero
+	willFlag := (flags & 0x04) == 0x04
+	willRetain := (flags & 0x20) == 0x20
+	if willFlag == false && willQoS != 0 && willRetain == true {
+		return nil, ErrInvalidPacket
+	}
+
+	pkt := &ConnectPacket{
+		usernamePresent: usernamePresent,
+		passwordPresent: passwordPresent,
+		willRetain:      willRetain,
+		willQoS:         willQoS,
+		willFlag:        willFlag,
+		cleanSession:    (flags & 0x02) == 0x02,
+		keepAlive:       (uint16(p[8]) << 8) + uint16(p[9]),
+	}
+
+	// get client identifier
+	i := 10
+	pkt.clientIdentifier, i = readStr(p, i)
+
+	// if client sets cleanSession to false but does not
+	// provde a client ID, packet is invalid
+	if pkt.clientIdentifier == nil && !pkt.cleanSession {
+		return nil, ErrInvalidPacket
+	}
+	// get will flag & will message
+	if pkt.willFlag {
+		pkt.willTopic, i = readStr(p, i)
+		pkt.willMessage, i = readStr(p, i)
+	}
+	// get username
+	if pkt.usernamePresent {
+		pkt.username, i = readStr(p, i)
+	}
+	// get password
+	if pkt.passwordPresent {
+		pkt.password, i = readStr(p, i)
+	}
+
+	return pkt, err
 }
 
 func (p *ConnectPacket) getConnectFlagsByte() byte {
 	var b byte = 0
-	if p.loginDetailsPresent { // username & password present
-		b = b | 0xC0 // 0x80 + 0x40 for both username & pass
+	if p.usernamePresent { // username & password present
+		b = b | 0x80
+		if p.passwordPresent {
+			b = b | 0x40
+		}
 	}
 	if p.willRetain {
 		b = b | 0x20
 	}
-	b = b | p.willQoS
+	b = b | (p.willQoS << 3)
 	if p.willFlag {
 		b = b | 0x04
 	}
@@ -135,13 +242,19 @@ func (p *ConnectPacket) getConnectFlagsByte() byte {
 	return b
 }
 
+// PayloadLen returns length of payload, ie minus fixed header size
 func (p *ConnectPacket) payloadLen() int {
 	payloadLen := 10 + // variable Header
-		2 + len(p.clientIdentifier) +
-		2 + len(p.willTopic) +
-		2 + len(p.willMessage) +
-		2 + len(p.username) +
-		2 + len(p.password)
+		2 + len(p.clientIdentifier)
+	if p.willFlag {
+		payloadLen += 2 + len(p.willTopic) + 2 + len(p.willMessage)
+	}
+	if p.usernamePresent {
+		payloadLen += 2 + len(p.username)
+	}
+	if p.passwordPresent {
+		payloadLen += 2 + len(p.password)
+	}
 	return payloadLen
 }
 
@@ -156,7 +269,7 @@ func (p *ConnectPacket) Len() int {
 /*
 	CONNACK PACKET
 */
-type connackPacket struct {
+type ConnackPacket struct {
 	sessionPresent    bool
 	connectReturnCode connectReturnCode
 }
@@ -191,11 +304,14 @@ func (code connectReturnCode) String() string {
 	}
 }
 
-func (p *connackPacket) Read(b []byte) (n int, err error) {
-	if len(b) < 4 { // requires 2 bytes ? or more
-		return 0, io.ErrShortBuffer
+func (p *ConnackPacket) Serialize(b []byte) ([]byte, error) {
+	if b == nil {
+		b = make([]byte, 4)
 	}
-	b[0] = connack<<4 | 0x0 // ctrl pkt type + flags(reserved)
+	if len(b) < 4 { // requires 2 bytes ? or more
+		return nil, ErrShortBuffer
+	}
+	b[0] = Connack<<4 | 0x0 // ctrl pkt type + flags(reserved)
 	b[1] = 2                // remaining length
 	if p.sessionPresent {   // session present
 		b[2] = 1
@@ -203,15 +319,15 @@ func (p *connackPacket) Read(b []byte) (n int, err error) {
 		b[2] = 0
 	}
 	b[3] = byte(p.connectReturnCode)
-	return 4, io.EOF
+	return b[:4], nil
 }
 
-func (p *connackPacket) Len() int {
+func (p *ConnackPacket) Len() int {
 	// takes up 4 bytes, 2 for fixed header, 2 for variable header
 	return 4
 }
 
-func (p *connackPacket) ConnectionAccepted() (ok bool, description string) {
+func (p *ConnackPacket) ConnectionAccepted() (ok bool, description string) {
 	ok = p.connectReturnCode == connAccepted
 	description = p.connectReturnCode.String()
 	return
@@ -220,18 +336,21 @@ func (p *connackPacket) ConnectionAccepted() (ok bool, description string) {
 /*
 	DISCONNECT PACKET
 */
-type disconnectPacket struct{}
+type DisconnectPacket struct{}
 
-func (p *disconnectPacket) Read(b []byte) (n int, err error) {
-	if len(b) < 2 { // requires 2 bytes ? or more
-		return 0, io.ErrShortBuffer
+func (p *DisconnectPacket) Serialize(b []byte) ([]byte, error) {
+	if b == nil {
+		b = make([]byte, 4)
 	}
-	b[0] = disconnect<<4 | 0x0 // ctrl pkt type + flags(reserved)
+	if len(b) < 2 { // requires 2 bytes ? or more
+		return nil, ErrShortBuffer
+	}
+	b[0] = Disconnect<<4 | 0x0 // ctrl pkt type + flags(reserved)
 	b[1] = 0                   // remaining length, zero
-	return 2, io.EOF
+	return b[:2], nil
 }
 
-func (p *disconnectPacket) Len() int {
+func (p *DisconnectPacket) Len() int {
 	// disconnect packets are always 2 bytes
 	return 2
 }
