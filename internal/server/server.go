@@ -1,70 +1,70 @@
 package server
 
 import (
-	"fmt"
+	"io/ioutil"
+	"log"
 	"net"
 	"sync"
 )
 
-// OnConn is a callback that's called by the server whenever it receives
-// a new connection. It should be non-blocking so that server can quickly receive
-// other connections
-type OnConn func(conn net.Conn)
+// ConnHandler encapsulates both an OnConn function that the server calls whenever there's
+// a new connection and a Close function that's called when the server is closing down.
+// The OnConn function should be non-blocking so that the server can quickly receive other
+// connections. The ConnHandler is responsible for closing connections once done
+type ConnHandler interface {
+	OnConn(conn net.Conn)
+	Close()
+}
 
 // Server handles network details such as receiving new connections.
 // structuring credit: https://eli.thegreenplace.net/2020/graceful-shutdown-of-a-tcp-server-in-go/#
 type Server struct {
 	listener net.Listener
-	quit     chan struct{}
-	wg       sync.WaitGroup
+	quitCh   chan struct{}
 	onceStop sync.Once
-	onConn   OnConn
+	handler  ConnHandler
+	logger   *log.Logger
 }
 
 // NewServer sets up server plus starts listening on new client connections
 // in separate go routine. Callers should find a way to block
-func NewServer(addr string, onConn OnConn) (*Server, error) {
-	s := new(Server)
-
+func NewServer(addr string, handler ConnHandler) (*Server, error) {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 
-	s.listener = listener
-	s.quit = make(chan struct{})
-	s.onConn = onConn
+	s := &Server{
+		listener: listener,
+		quitCh:   make(chan struct{}),
+		handler:  handler,
+		logger:   log.New(ioutil.Discard, "", 0),
+	}
 
 	go s.receiveConnections()
 
-	fmt.Printf("server started on address: %s\n", s.listener.Addr())
+	s.logger.Printf("server started on address: %s\n", s.listener.Addr())
 	return s, nil
 }
 
 func (s *Server) receiveConnections() {
-	s.wg.Add(1)
-	defer s.wg.Done()
 	for {
-		conn, err := s.listener.Accept()
-		if err != nil {
-			// check for quits first
-			select {
-			case <-s.quit:
-				return
-			default:
-				fmt.Println("server accept error:", err)
+		select {
+		case <-s.quitCh:
+			return
+		default:
+			conn, err := s.listener.Accept()
+			if err != nil {
+				s.logger.Println("server accept error:", err)
+				continue
 			}
-			continue
+			if conn == nil {
+				s.logger.Println("server create connection error:")
+				continue
+			}
+			s.handler.OnConn(conn)
 		}
-		if conn == nil {
-			fmt.Println("server create connection error:")
-			continue
-		}
-		s.wg.Add(1) // add new client conn
-		go func() {
-			s.onConn(conn)
-			s.wg.Done() // indicate client done
-		}()
+
 	}
 }
 
@@ -72,9 +72,9 @@ func (s *Server) receiveConnections() {
 // safe to call even if server not started
 func (s *Server) Stop() {
 	s.onceStop.Do(func() {
-		close(s.quit) // broadcast quit
+		close(s.quitCh) // broadcast quit
 		s.listener.Close()
-		s.wg.Wait() // wait for clients ?
-		fmt.Println("server closed")
+		s.handler.Close()
+		s.logger.Println("server closed")
 	})
 }

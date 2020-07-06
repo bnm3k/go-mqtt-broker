@@ -3,7 +3,6 @@ package server
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"sync"
@@ -13,30 +12,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// HandleConnection is the entry point that's called once a
-// client connection is received. Handles I/O for the client or delegates
-// to other handlers. Should be called within a gorouting to avoid blocking the main
-// goroutine
-func handleConnection(conn net.Conn) {
+type testHandler struct {
+	wg sync.WaitGroup
+}
+
+func (h *testHandler) OnConn(conn net.Conn) {
+	h.wg.Add(1) // add new client conn
+	go func() {
+		h.handleConn(conn)
+		h.wg.Done() // indicate client done
+	}()
+
+}
+
+func (h *testHandler) handleConn(conn net.Conn) {
 	// conn.SetDeadline(time.Now().Add(1 * time.Second))
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	for {
 		bs, err := reader.ReadBytes('\n')
 		if err != nil {
-			if err != io.EOF {
-				fmt.Println("Failed to read data, err:", err)
-			}
 			return
 		}
-		//n, err := conn.Write(bs)
-		// restore '\n'
-		conn.Write(bs)
+		conn.Write(append(bs, '\n'))
 	}
 }
 
+func (h *testHandler) Close() {
+	h.wg.Wait()
+}
+
 func TestServerStartStop(t *testing.T) {
-	s, err := NewServer(":0", handleConnection)
+	s, err := NewServer(":0", &testHandler{})
 	require.NoError(t, err)
 	s.Stop()
 }
@@ -52,23 +59,26 @@ func TestServerSimpleHandleFastClients(t *testing.T) {
 			log.Fatal(err)
 		}
 		clientsConnected.Done()
-		defer conn.Close()
+
 		fmt.Fprintf(conn, "client conn msg")
 		time.Sleep(100 * time.Millisecond)
 		conn.Close()
+
 		clientsDisconnected.Done()
 	}
 
 	// set up server
-	s, err := NewServer(":0", handleConnection)
+	s, err := NewServer(":0", &testHandler{})
 	require.NoError(t, err)
 	addr := s.listener.Addr()
 
-	// set up 2 clients
-	clientsConnected.Add(2)
-	clientsDisconnected.Add(2)
-	go clientConnect(addr)
-	go clientConnect(addr)
+	// set up N clients
+	N := 2
+	clientsConnected.Add(N)
+	clientsDisconnected.Add(N)
+	for i := 0; i < N; i++ {
+		go clientConnect(addr)
+	}
 
 	// stop server before clients disconnect
 	clientsConnected.Wait()
