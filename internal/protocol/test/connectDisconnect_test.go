@@ -30,13 +30,13 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// check fixed header
-		pktType, flags, payloadSize, err := protocol.ReadFixedHeader(bytes.NewReader(serialized))
+		pktType, ctrlFlags, payloadSize, err := protocol.ReadFixedHeader(bytes.NewReader(serialized))
 		require.Equal(t, pktType, protocol.Connect)
-		require.True(t, protocol.IsValidFlagsSet(pktType, flags))
+		require.True(t, protocol.IsValidFlagsSet(pktType, ctrlFlags))
 
 		// check payload
 		payload := serialized[len(serialized)-int(payloadSize):]
-		pktB, err := protocol.DeserializeConnectPktPayload(payload)
+		pktB, err := protocol.DeserializeConnectPktPayload(ctrlFlags, payload)
 		require.NoError(t, err)
 		require.NotNil(t, pktB, "Deserialized connect pkt should not be nil")
 		require.Equal(t, pktA, pktB, "Deserialized connect pkt does not match original pkt")
@@ -55,13 +55,13 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// check fixed header
-		pktType, flags, payloadSize, err := protocol.ReadFixedHeader(bytes.NewReader(serialized))
+		pktType, ctrlFlags, payloadSize, err := protocol.ReadFixedHeader(bytes.NewReader(serialized))
 		require.Equal(t, pktType, protocol.Connect)
-		require.True(t, protocol.IsValidFlagsSet(pktType, flags))
+		require.True(t, protocol.IsValidFlagsSet(pktType, ctrlFlags))
 
 		// check payload, should be an error
 		payload := serialized[len(serialized)-int(payloadSize):]
-		_, err = protocol.DeserializeConnectPktPayload(payload)
+		_, err = protocol.DeserializeConnectPktPayload(ctrlFlags, payload)
 		require.Error(t, err)
 	})
 }

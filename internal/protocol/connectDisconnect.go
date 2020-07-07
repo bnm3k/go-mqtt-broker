@@ -137,8 +137,8 @@ func (p *ConnectPacket) Serialize(b []byte) ([]byte, error) {
 }
 
 // DeserializeConnectPktPayload parses the contents of a bytes slice and returns
-// a ConnectPacket as required. Panics, if p []byte is shorter than it needs to be,
-func DeserializeConnectPktPayload(p []byte) (*ConnectPacket, error) {
+// a ConnectPacket as required.
+func DeserializeConnectPktPayload(ctrlFlags byte, p []byte) (*ConnectPacket, error) {
 	var err error
 	readStr := func(from []byte, startPos int) (str []byte, nextPos int) {
 		if err == nil {
@@ -158,6 +158,10 @@ func DeserializeConnectPktPayload(p []byte) (*ConnectPacket, error) {
 			nextPos = startPos + 2 + strLen
 		}
 		return
+	}
+	// check valid ctrl flags set, ie reserved
+	if ctrlFlags != 0x00 {
+		return nil, ErrInvalidPacket
 	}
 	// payload must be at least 12 bytes to be valid
 	if len(p) < 12 {
@@ -278,38 +282,70 @@ func (p *ConnectPacket) Len() int {
 // ConnackPacket holds the in-memory representation of
 // a connack packet
 type ConnackPacket struct {
-	sessionPresent    bool
-	connectReturnCode connectReturnCode
+	SessionPresent    bool
+	ConnectReturnCode ConnectReturnCode
 }
 
-type connectReturnCode byte
+// ConnectReturnCode holds the return code for
+// when a broker responds to a client's connect
+// packet
+type ConnectReturnCode byte
 
+// ConnAccepted etc self-explanatory
 const (
-	connAccepted connectReturnCode = iota
-	connRefusedUnacceptableProtocol
-	connRefusedIdentifierRejected
-	connRefusedServerUnavailable
-	connRefusedBadUsernamePass
-	connRefusedNotAuthorized
+	ConnAccepted ConnectReturnCode = iota
+	ConnRefusedUnacceptableProtocol
+	ConnRefusedIdentifierRejected
+	ConnRefusedServerUnavailable
+	ConnRefusedBadUsernamePass
+	ConnRefusedNotAuthorized
 )
 
-func (code connectReturnCode) String() string {
+func (code ConnectReturnCode) String() string {
 	switch code {
-	case connAccepted:
+	case ConnAccepted:
 		return "Connection accepted"
-	case connRefusedUnacceptableProtocol:
+	case ConnRefusedUnacceptableProtocol:
 		return "The Server does not support the level of the MQTT protocol requested by the Client"
-	case connRefusedIdentifierRejected:
+	case ConnRefusedIdentifierRejected:
 		return "The Client identifier is correct UTF-8 but not allowed by the Server"
-	case connRefusedServerUnavailable:
+	case ConnRefusedServerUnavailable:
 		return "The Network Connection has been made but the MQTT service is unavailable"
-	case connRefusedBadUsernamePass:
+	case ConnRefusedBadUsernamePass:
 		return "The data in the user name or password is malformed"
-	case connRefusedNotAuthorized:
+	case ConnRefusedNotAuthorized:
 		return "The Client is not authorized to connect"
 	default:
 		return "Reserved for future use"
 	}
+}
+
+// DeserializeConnackPktPayload parses the contents of a bytes slice and returns
+// a ConnackPacket as required.
+func DeserializeConnackPktPayload(ctrlFlags byte, p []byte) (*ConnackPacket, error) {
+	// check control flags are valid (reserved values)
+	if ctrlFlags != 0x00 {
+		return nil, ErrInvalidPacket
+	}
+	// payload must be of length 2
+	if len(p) < 2 {
+		return nil, ErrInvalidPacket
+	}
+	connAckFlags := p[0]
+	// first 7 bits of connect ack flags must be 0
+	if (connAckFlags & 0xFE) != 0xFE {
+		return nil, ErrInvalidPacket
+	}
+	// connect return code should not use reserved values
+	cr := p[1]
+	if cr > 5 {
+		return nil, ErrInvalidPacket
+	}
+	pkt := &ConnackPacket{
+		SessionPresent:    (connAckFlags & 0x01) == 0x01,
+		ConnectReturnCode: ConnectReturnCode(cr),
+	}
+	return pkt, nil
 }
 
 // Serialize serializes the contents of a connack packet into
@@ -326,12 +362,12 @@ func (p *ConnackPacket) Serialize(b []byte) ([]byte, error) {
 	}
 	b[0] = Connack<<4 | 0x0 // ctrl pkt type + flags(reserved)
 	b[1] = 2                // remaining length
-	if p.sessionPresent {   // session present
+	if p.SessionPresent {   // session present
 		b[2] = 1
 	} else {
 		b[2] = 0
 	}
-	b[3] = byte(p.connectReturnCode)
+	b[3] = byte(p.ConnectReturnCode)
 	return b[:4], nil
 }
 
@@ -346,8 +382,8 @@ func (p *ConnackPacket) Len() int {
 // client to check whether their connection was accepted and if not, the
 // reason why
 func (p *ConnackPacket) ConnectionAccepted() (ok bool, description string) {
-	ok = p.connectReturnCode == connAccepted
-	description = p.connectReturnCode.String()
+	ok = p.ConnectReturnCode == ConnAccepted
+	description = p.ConnectReturnCode.String()
 	return
 }
 
