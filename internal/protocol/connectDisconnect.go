@@ -63,6 +63,9 @@ func NewConnectPacket(cfg *ConnectPacketConfig) (*ConnectPacket, error) {
 	if cfg.WillQoS > 2 {
 		return nil, fmt.Errorf("Invalid QoS %d. Should be 0x0, 0x1 or 0x2", cfg.WillQoS)
 	}
+	if len(cfg.ClientIdentifier) == 0 && cfg.ShouldCleanSession == false {
+		return nil, fmt.Errorf("If shouldCleanSession is set to false, then a client identifier must be provided")
+	}
 	p := new(ConnectPacket)
 	// setup username & password
 	p.clientIdentifier = cfg.ClientIdentifier
@@ -128,9 +131,9 @@ func (p *ConnectPacket) Serialize(b []byte) ([]byte, error) {
 	}
 	if p.usernamePresent {
 		buf.writeMQTTStr(p.username)
-		if p.passwordPresent {
-			buf.writeMQTTStr(p.password)
-		}
+	}
+	if p.passwordPresent {
+		buf.writeMQTTStr(p.password)
 	}
 
 	return b[:buf.bytesWritten()], nil

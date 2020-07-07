@@ -47,25 +47,6 @@ func isReservedControlPacketType(i uint8) bool {
 	return i == 0 || i == 15
 }
 
-// IsValidFlagsSet returns true if the appropriate flags set
-// otherwise false
-func IsValidFlagsSet(ctrlPktType uint8, flags uint8) bool {
-	// check section 2.2.2 on the default flags to be set
-	switch ctrlPktType {
-	case Publish:
-		// check section 3.3.1.2 on QoS
-		// from spec: A PUBLISH Packet MUST NOT have both QoS
-		// bits set to 1. If a Server or Client receives a PUBLISH
-		// Packet which has both QoS bits set to 1 it MUST close
-		// the Network Connection
-		return flags|0x06 != 0x06
-	case Pubrel, Subscribe, Unsubscribe:
-		return flags == 0x02
-	default:
-		return flags == 0x00
-	}
-}
-
 // for use with non-publish type packets, if used with
 // publish type packet, all flags set to 0, which
 // means no duplication, At most once delivery and no retain
