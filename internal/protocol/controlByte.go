@@ -1,7 +1,11 @@
 package protocol
 
+// ControlPacketType represent the packet type
+// of an mqtt packet
 type ControlPacketType uint8
 
+// Connect well, connect packet type, the rest
+// are also self-explanatory
 const (
 	Connect uint8 = iota + 1
 	Connack

@@ -92,6 +92,11 @@ func NewConnectPacket(cfg *ConnectPacketConfig) (*ConnectPacket, error) {
 
 var protocolVersion []byte = []byte{0, 4, 'M', 'Q', 'T', 'T', 0x04}
 
+// Serialize serializes the contents of a connect packet into
+// a []byte buffer. Buffer should be of appropriate length
+// otherwise a ErrShortBuffer error is returned. If nil buffer
+// is provided, Serialize instantiates a buffer of required length
+// and returns it
 func (p *ConnectPacket) Serialize(b []byte) ([]byte, error) {
 	lenConnectPacket := p.Len()
 	if b == nil {
@@ -269,6 +274,9 @@ func (p *ConnectPacket) Len() int {
 /*
 	CONNACK PACKET
 */
+
+// ConnackPacket holds the in-memory representation of
+// a connack packet
 type ConnackPacket struct {
 	sessionPresent    bool
 	connectReturnCode connectReturnCode
@@ -304,6 +312,11 @@ func (code connectReturnCode) String() string {
 	}
 }
 
+// Serialize serializes the contents of a connack packet into
+// a []byte buffer. Buffer should be of appropriate length
+// otherwise a ErrShortBuffer error is returned. If nil buffer
+// is provided, Serialize instantiates a buffer of required length
+// and returns it
 func (p *ConnackPacket) Serialize(b []byte) ([]byte, error) {
 	if b == nil {
 		b = make([]byte, 4)
@@ -322,11 +335,16 @@ func (p *ConnackPacket) Serialize(b []byte) ([]byte, error) {
 	return b[:4], nil
 }
 
+// Len returns the total length in terms of bytes
+// that the Connack packet takes
 func (p *ConnackPacket) Len() int {
 	// takes up 4 bytes, 2 for fixed header, 2 for variable header
 	return 4
 }
 
+// ConnectionAccepted is a convenience method that allows the user, ie a
+// client to check whether their connection was accepted and if not, the
+// reason why
 func (p *ConnackPacket) ConnectionAccepted() (ok bool, description string) {
 	ok = p.connectReturnCode == connAccepted
 	description = p.connectReturnCode.String()
@@ -336,8 +354,15 @@ func (p *ConnackPacket) ConnectionAccepted() (ok bool, description string) {
 /*
 	DISCONNECT PACKET
 */
+
+// DisconnectPacket holds the in-memory representation of a disconnect packet
 type DisconnectPacket struct{}
 
+// Serialize serializes the contents of a disconnect packet into
+// a []byte buffer. Buffer should be of appropriate length
+// otherwise a ErrShortBuffer error is returned. If nil buffer
+// is provided, Serialize instantiates a buffer of required length
+// and returns it
 func (p *DisconnectPacket) Serialize(b []byte) ([]byte, error) {
 	if b == nil {
 		b = make([]byte, 4)
@@ -350,6 +375,8 @@ func (p *DisconnectPacket) Serialize(b []byte) ([]byte, error) {
 	return b[:2], nil
 }
 
+// Len returns the total length in terms of bytes
+// that the disconnect packet takes
 func (p *DisconnectPacket) Len() int {
 	// disconnect packets are always 2 bytes
 	return 2
