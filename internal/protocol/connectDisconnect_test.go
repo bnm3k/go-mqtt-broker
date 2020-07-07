@@ -27,8 +27,8 @@ func isValidFlagsSet(ctrlPktType uint8, flags uint8) bool {
 }
 
 func TestConnectPacket(t *testing.T) {
-	t.Run("everything in connect packet set", func(t *testing.T) {
-		t.Skip()
+	t.Skip()
+	t.Run("everything in connect packet set, happy path", func(t *testing.T) {
 		cfg := &ConnectPacketConfig{
 			ClientIdentifier:   []byte("abcde"),
 			Username:           []byte("foo"),
@@ -270,6 +270,104 @@ func TestConnectPacket(t *testing.T) {
 		payload := serialized[len(serialized)-int(payloadSize):]
 		payload[7] = payload[7] | 0x04
 		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		require.Error(t, err)
+	})
+}
+
+func TestConnackPacket(t *testing.T) {
+	t.Run("everything ok", func(t *testing.T) {
+		pkt := &ConnackPacket{
+			SessionPresent:    false,
+			ConnectReturnCode: ConnAccepted,
+		}
+		serialized, err := pkt.Serialize(nil)
+		require.NoError(t, err)
+		require.NotNil(t, serialized)
+
+		// check fixed header
+		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, pktType, Connack)
+		require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+
+		// check payload
+		payload := serialized[len(serialized)-int(payloadSize):]
+		pktRcvd, err := DeserializeConnackPktPayload(ctrlFlags, payload)
+		require.NoError(t, err)
+		require.NotNil(t, pktRcvd, "Deserialized connect pkt should not be nil")
+		require.Equal(t, pkt, pktRcvd, "Deserialized connect pkt does not match original pkt")
+	})
+
+	t.Run("payload shorter than 2 bytes", func(t *testing.T) {
+		pkt := &ConnackPacket{}
+		serialized, err := pkt.Serialize(nil)
+		require.NoError(t, err)
+		require.NotNil(t, serialized)
+
+		// check fixed header
+		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, pktType, Connack)
+		require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+
+		// check payload
+		payload := serialized[len(serialized)-int(payloadSize):]
+		_, err = DeserializeConnackPktPayload(ctrlFlags, payload[:1])
+		require.Error(t, err)
+	})
+
+	t.Run("ctrl flags should be set to reserved value", func(t *testing.T) {
+		pkt := &ConnackPacket{}
+		serialized, err := pkt.Serialize(nil)
+		require.NoError(t, err)
+		require.NotNil(t, serialized)
+
+		// set invalid ctrl flags
+		serialized[0] = serialized[0] | 0x0A
+
+		// check fixed header
+		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, pktType, Connack)
+		require.False(t, isValidFlagsSet(pktType, ctrlFlags))
+
+		// check payload
+		payload := serialized[len(serialized)-int(payloadSize):]
+		_, err = DeserializeConnackPktPayload(ctrlFlags, payload)
+		require.Error(t, err)
+	})
+
+	t.Run("connect return code should not use reserved values", func(t *testing.T) {
+		pkt := &ConnackPacket{
+			ConnectReturnCode: 10,
+		}
+		serialized, err := pkt.Serialize(nil)
+		require.NoError(t, err)
+		require.NotNil(t, serialized)
+
+		// check fixed header
+		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, pktType, Connack)
+		require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+
+		// check payload
+		payload := serialized[len(serialized)-int(payloadSize):]
+		_, err = DeserializeConnackPktPayload(ctrlFlags, payload)
+		require.Error(t, err)
+	})
+
+	t.Run("first 7 bits for connect ack flags should be 0", func(t *testing.T) {
+		pkt := &ConnackPacket{}
+		serialized, err := pkt.Serialize(nil)
+		require.NoError(t, err)
+		require.NotNil(t, serialized)
+
+		// check fixed header
+		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, pktType, Connack)
+		require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+
+		// set connect ack flags to non-zero and check payload
+		payload := serialized[len(serialized)-int(payloadSize):]
+		payload[0] = payload[0] | 0xFF
+		_, err = DeserializeConnackPktPayload(ctrlFlags, payload)
 		require.Error(t, err)
 	})
 }

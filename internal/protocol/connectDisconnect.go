@@ -336,7 +336,7 @@ func DeserializeConnackPktPayload(ctrlFlags byte, p []byte) (*ConnackPacket, err
 	}
 	connAckFlags := p[0]
 	// first 7 bits of connect ack flags must be 0
-	if (connAckFlags & 0xFE) != 0xFE {
+	if (connAckFlags & 0xFE) != 0x00 {
 		return nil, ErrInvalidPacket
 	}
 	// connect return code should not use reserved values
