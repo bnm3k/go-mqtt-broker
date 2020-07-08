@@ -28,7 +28,6 @@ func (s *spyReadPayloadSize) ReadByte() (byte, error) {
 }
 
 func TestReadWritePayloadSize(t *testing.T) {
-	t.Skip()
 	t.Run("everything ok", func(t *testing.T) {
 		cases := []struct {
 			from                 uint32

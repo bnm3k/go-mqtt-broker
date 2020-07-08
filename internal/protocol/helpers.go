@@ -49,3 +49,61 @@ func (b *writableBuf) writeMQTTStr(str []byte) {
 	b.WriteByte(byte(strLen))
 	b.Write(str[:strLen])
 }
+
+type pktReader struct {
+	i    int
+	err  error
+	from []byte
+}
+
+func (r *pktReader) readNum() (num uint16) {
+	if r.err == nil {
+		if r.i+2 > len(r.from) {
+			r.err = ErrInvalidPacket
+			return
+		}
+		num = (uint16(r.from[r.i]) << 8) + uint16(r.from[r.i+1])
+		r.i += 2
+	}
+	return
+}
+
+func (r *pktReader) readStr() (str []byte) {
+	if r.err == nil {
+		if r.i+2 > len(r.from) {
+			r.err = ErrInvalidPacket
+			return
+		}
+		strLen := (int(r.from[r.i]) << 8) + int(r.from[r.i+1])
+		r.i += 2
+
+		if r.i+strLen > len(r.from) {
+			r.err = ErrInvalidPacket
+			return
+		}
+		if strLen > 0 {
+			str = r.from[r.i : r.i+strLen]
+			r.i += strLen
+		}
+	}
+	return
+}
+
+func (r *pktReader) readBuf(bufLen int) (buf []byte) {
+	if r.err == nil {
+		if r.i > len(r.from) {
+			r.err = ErrInvalidPacket
+			return
+		}
+		if r.i < len(r.from) {
+			buf = r.from[r.i : r.i+bufLen]
+		}
+	}
+	return
+}
+
+func (r *pktReader) setErrIfPartsStillUnread() {
+	if r.i < len(r.from) {
+		r.err = ErrInvalidPacket
+	}
+}

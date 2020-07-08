@@ -142,26 +142,6 @@ func (p *ConnectPacket) Serialize(b []byte) ([]byte, error) {
 // DeserializeConnectPktPayload parses the contents of a bytes slice and returns
 // a ConnectPacket as required.
 func DeserializeConnectPktPayload(ctrlFlags byte, p []byte) (*ConnectPacket, error) {
-	var err error
-	readStr := func(from []byte, startPos int) (str []byte, nextPos int) {
-		if err == nil {
-			from = from[startPos:]
-			if len(from) < 2 {
-				err = ErrInvalidPacket
-				return
-			}
-			strLen := (int(from[0]) << 8) + int(from[1])
-			if len(from) < strLen+2 {
-				err = ErrInvalidPacket
-				return
-			}
-			if strLen > 0 {
-				str = from[2 : 2+strLen]
-			}
-			nextPos = startPos + 2 + strLen
-		}
-		return
-	}
 	// check valid ctrl flags set, ie reserved
 	if ctrlFlags != 0x00 {
 		return nil, ErrInvalidPacket
@@ -207,9 +187,9 @@ func DeserializeConnectPktPayload(ctrlFlags byte, p []byte) (*ConnectPacket, err
 		keepAlive:       (uint16(p[8]) << 8) + uint16(p[9]),
 	}
 
+	pr := &pktReader{from: p, i: 10}
 	// get client identifier
-	i := 10
-	pkt.clientIdentifier, i = readStr(p, i)
+	pkt.clientIdentifier = pr.readStr()
 
 	// if client sets cleanSession to false but does not
 	// provde a client ID, packet is invalid
@@ -218,19 +198,19 @@ func DeserializeConnectPktPayload(ctrlFlags byte, p []byte) (*ConnectPacket, err
 	}
 	// get will flag & will message
 	if pkt.willFlag {
-		pkt.willTopic, i = readStr(p, i)
-		pkt.willMessage, i = readStr(p, i)
+		pkt.willTopic = pr.readStr()
+		pkt.willMessage = pr.readStr()
 	}
 	// get username
 	if pkt.usernamePresent {
-		pkt.username, i = readStr(p, i)
+		pkt.username = pr.readStr()
 	}
 	// get password
 	if pkt.passwordPresent {
-		pkt.password, i = readStr(p, i)
+		pkt.password = pr.readStr()
 	}
 
-	return pkt, err
+	return pkt, pr.err
 }
 
 func (p *ConnectPacket) getConnectFlagsByte() byte {
@@ -404,7 +384,7 @@ type DisconnectPacket struct{}
 // and returns it
 func (p *DisconnectPacket) Serialize(b []byte) ([]byte, error) {
 	if b == nil {
-		b = make([]byte, 4)
+		b = make([]byte, 2)
 	}
 	if len(b) < 2 { // requires 2 bytes ? or more
 		return nil, ErrShortBuffer
@@ -418,5 +398,69 @@ func (p *DisconnectPacket) Serialize(b []byte) ([]byte, error) {
 // that the disconnect packet takes
 func (p *DisconnectPacket) Len() int {
 	// disconnect packets are always 2 bytes
+	return 2
+}
+
+/*
+	PING REQUEST PACKET
+*/
+
+// PingreqPacket holds the in-memory representation of
+// a ping request packet
+type PingreqPacket struct{}
+
+// Serialize serializes the contents of a ping request packet into
+// a []byte buffer. Buffer should be of appropriate length
+// otherwise an error is returned. If nil buffer
+// is provided, Serialize instantiates a buffer of required length
+// and returns it
+func (p *PingreqPacket) Serialize(b []byte) ([]byte, error) {
+	if b == nil {
+		b = make([]byte, 2)
+	}
+	if len(b) < 2 { // requires 2 bytes ? or more
+		return nil, ErrShortBuffer
+	}
+	b[0] = Pingreq<<4 | 0x0 // ctrl pkt type + flags(reserved)
+	b[1] = 0                // no payload
+	return b[:2], nil
+}
+
+// Len returns the total length in terms of bytes
+// that a ping request packet takes
+func (p *PingreqPacket) Len() int {
+	// takes up 2 bytes
+	return 2
+}
+
+/*
+	PING RESPONSE PACKET
+*/
+
+// PingrespPacket holds the in-memory representation of
+// a ping request packet
+type PingrespPacket struct{}
+
+// Serialize serializes the contents of a ping response packet into
+// a []byte buffer. Buffer should be of appropriate length
+// otherwise an error is returned. If nil buffer
+// is provided, Serialize instantiates a buffer of required length
+// and returns it
+func (p *PingrespPacket) Serialize(b []byte) ([]byte, error) {
+	if b == nil {
+		b = make([]byte, 2)
+	}
+	if len(b) < 2 { // requires 2 bytes ? or more
+		return nil, ErrShortBuffer
+	}
+	b[0] = Pingresp<<4 | 0x0 // ctrl pkt type + flags(reserved)
+	b[1] = 0                 // no payload
+	return b[:2], nil
+}
+
+// Len returns the total length in terms of bytes
+// that a ping response packet takes
+func (p *PingrespPacket) Len() int {
+	// takes up 2 bytes
 	return 2
 }

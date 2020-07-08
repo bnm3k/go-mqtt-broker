@@ -18,7 +18,7 @@ func isValidFlagsSet(ctrlPktType uint8, flags uint8) bool {
 		// bits set to 1. If a Server or Client receives a PUBLISH
 		// Packet which has both QoS bits set to 1 it MUST close
 		// the Network Connection
-		return flags|0x06 != 0x06
+		return flags&0x06 != 0x06
 	case Pubrel, Subscribe, Unsubscribe:
 		return flags == 0x02
 	default:
@@ -27,7 +27,6 @@ func isValidFlagsSet(ctrlPktType uint8, flags uint8) bool {
 }
 
 func TestConnectPacket(t *testing.T) {
-	t.Skip()
 	t.Run("everything in connect packet set, happy path", func(t *testing.T) {
 		cfg := &ConnectPacketConfig{
 			ClientIdentifier:   []byte("abcde"),
@@ -370,4 +369,49 @@ func TestConnackPacket(t *testing.T) {
 		_, err = DeserializeConnackPktPayload(ctrlFlags, payload)
 		require.Error(t, err)
 	})
+}
+
+func TestDisconnectPacket(t *testing.T) {
+	pkt := &DisconnectPacket{}
+	serialized, err := pkt.Serialize(nil)
+	require.Nil(t, err)
+	require.NotNil(t, serialized)
+	require.Equal(t, pkt.Len(), len(serialized))
+
+	// read fixed header
+	pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), payloadSize)
+	require.Equal(t, Disconnect, pktType)
+	require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+}
+
+func TestPingreqtPacket(t *testing.T) {
+	pkt := &PingreqPacket{}
+	serialized, err := pkt.Serialize(nil)
+	require.Nil(t, err)
+	require.NotNil(t, serialized)
+	require.Equal(t, pkt.Len(), len(serialized))
+
+	// read fixed header
+	pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), payloadSize)
+	require.Equal(t, Pingreq, pktType)
+	require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+}
+
+func TestPingresptPacket(t *testing.T) {
+	pkt := &PingrespPacket{}
+	serialized, err := pkt.Serialize(nil)
+	require.Nil(t, err)
+	require.NotNil(t, serialized)
+	require.Equal(t, pkt.Len(), len(serialized))
+
+	// read fixed header
+	pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), payloadSize)
+	require.Equal(t, Pingresp, pktType)
+	require.True(t, isValidFlagsSet(pktType, ctrlFlags))
 }
