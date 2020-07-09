@@ -141,9 +141,9 @@ func (p *ConnectPacket) Serialize(b []byte) ([]byte, error) {
 
 // DeserializeConnectPktPayload parses the contents of a bytes slice and returns
 // a ConnectPacket as required.
-func DeserializeConnectPktPayload(ctrlFlags byte, p []byte) (*ConnectPacket, error) {
+func DeserializeConnectPktPayload(f FixedHeader, p []byte) (*ConnectPacket, error) {
 	// check valid ctrl flags set, ie reserved
-	if ctrlFlags != 0x00 {
+	if f.CtrlFlags != 0x00 {
 		return nil, ErrInvalidPacket
 	}
 	// payload must be at least 12 bytes to be valid
@@ -305,9 +305,9 @@ func (code ConnectReturnCode) String() string {
 
 // DeserializeConnackPktPayload parses the contents of a bytes slice and returns
 // a ConnackPacket as required.
-func DeserializeConnackPktPayload(ctrlFlags byte, p []byte) (*ConnackPacket, error) {
+func DeserializeConnackPktPayload(f FixedHeader, p []byte) (*ConnackPacket, error) {
 	// check control flags are valid (reserved values)
-	if ctrlFlags != 0x00 {
+	if f.CtrlFlags != 0x00 {
 		return nil, ErrInvalidPacket
 	}
 	// payload must be of length 2

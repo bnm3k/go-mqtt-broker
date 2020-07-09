@@ -35,7 +35,7 @@ func TestConnectPacket(t *testing.T) {
 
 		// check payload
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
-		pktB, err := DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		pktB, err := DeserializeConnectPktPayload(f, payload)
 		require.NoError(t, err)
 		require.NotNil(t, pktB, "Deserialized connect pkt should not be nil")
 		require.Equal(t, pktA, pktB, "Deserialized connect pkt does not match original pkt")
@@ -61,7 +61,7 @@ func TestConnectPacket(t *testing.T) {
 
 		// check payload, should be an error
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -82,7 +82,7 @@ func TestConnectPacket(t *testing.T) {
 
 		// check payload, should be an error
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -101,13 +101,13 @@ func TestConnectPacket(t *testing.T) {
 		// set invalid protocol name & check err
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		copy(payload[:7], []byte{0, 4, 'A', 'B', 'C', 'D', 0x04})
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 
 		// set invalid protocol version & check err
 		copy(payload[:7], protocolVersion)
 		copy(payload[:7], []byte{0, 4, 'M', 'Q', 'T', 'T', 0x09})
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -126,7 +126,7 @@ func TestConnectPacket(t *testing.T) {
 		// set reserved connect flag to 1 and check error
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x01
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -146,7 +146,7 @@ func TestConnectPacket(t *testing.T) {
 		// set will QoS and willRetain to nonzero and check error
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x30
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -165,7 +165,7 @@ func TestConnectPacket(t *testing.T) {
 		// set will QoS to 3 and check error
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x18
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -184,7 +184,7 @@ func TestConnectPacket(t *testing.T) {
 		// set username flag and check error
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x80
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -203,7 +203,7 @@ func TestConnectPacket(t *testing.T) {
 		// set password flag and check error
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x40
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -224,7 +224,7 @@ func TestConnectPacket(t *testing.T) {
 		// check err
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x40
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -249,7 +249,7 @@ func TestConnectPacket(t *testing.T) {
 		// set will flag and check for err
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x04
-		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f, payload)
 		require.Error(t, err)
 	})
 }
@@ -271,7 +271,7 @@ func TestConnackPacket(t *testing.T) {
 
 		// check payload
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
-		pktRcvd, err := DeserializeConnackPktPayload(f.CtrlFlags, payload)
+		pktRcvd, err := DeserializeConnackPktPayload(f, payload)
 		require.NoError(t, err)
 		require.NotNil(t, pktRcvd, "Deserialized connect pkt should not be nil")
 		require.Equal(t, pkt, pktRcvd, "Deserialized connect pkt does not match original pkt")
@@ -290,7 +290,7 @@ func TestConnackPacket(t *testing.T) {
 
 		// check payload
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
-		_, err = DeserializeConnackPktPayload(f.CtrlFlags, payload[:1])
+		_, err = DeserializeConnackPktPayload(f, payload[:1])
 		require.Error(t, err)
 	})
 
@@ -310,7 +310,7 @@ func TestConnackPacket(t *testing.T) {
 
 		// check payload
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
-		_, err = DeserializeConnackPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnackPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -329,7 +329,7 @@ func TestConnackPacket(t *testing.T) {
 
 		// check payload
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
-		_, err = DeserializeConnackPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnackPktPayload(f, payload)
 		require.Error(t, err)
 	})
 
@@ -347,7 +347,7 @@ func TestConnackPacket(t *testing.T) {
 		// set connect ack flags to non-zero and check payload
 		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[0] = payload[0] | 0xFF
-		_, err = DeserializeConnackPktPayload(f.CtrlFlags, payload)
+		_, err = DeserializeConnackPktPayload(f, payload)
 		require.Error(t, err)
 	})
 }

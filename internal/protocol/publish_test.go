@@ -37,7 +37,7 @@ func TestPublishPacket(t *testing.T) {
 	})
 
 	t.Run("QoS is zero but packet identifier provided", func(t *testing.T) {
-
+		// find way to test for this?
 	})
 
 }
