@@ -101,9 +101,3 @@ func (r *pktReader) readBuf(bufLen int) (buf []byte) {
 	}
 	return
 }
-
-func (r *pktReader) setErrIfPartsStillUnread() {
-	if r.i < len(r.from) {
-		r.err = ErrInvalidPacket
-	}
-}

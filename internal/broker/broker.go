@@ -43,13 +43,13 @@ func (b *Broker) handleConn(conn net.Conn) {
 	for {
 		var buf []byte
 		// read fixed header
-		_, _, payloadSize, err := protocol.ReadFixedHeader(r)
+		f, err := protocol.ReadFixedHeader(r)
 		if err != nil {
 			return
 		}
 		// read rest of payload
-		if payloadSize > 0 {
-			buf = make([]byte, payloadSize)
+		if f.PayloadSize > 0 {
+			buf = make([]byte, f.PayloadSize)
 			_, err = io.ReadFull(r, buf)
 			if err != nil {
 				return

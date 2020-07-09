@@ -1,7 +1,5 @@
 package protocol
 
-import "fmt"
-
 // PublishPacket is an in-mem representation
 // of a Publish packet
 type PublishPacket struct {
@@ -58,11 +56,11 @@ func (p *PublishPacket) Serialize(b []byte) ([]byte, error) {
 
 // DeserializePublishPktPayload parses the contents of a bytes slice and returns
 // a PublishPacket as required.
-func DeserializePublishPktPayload(ctrlFlags byte, p []byte) (*PublishPacket, error) {
+func DeserializePublishPktPayload(f FixedHeader, p []byte) (*PublishPacket, error) {
 	// parse ctrl flags
-	isDuplicate := (ctrlFlags & 0x08) != 0
-	QoS := (ctrlFlags & 0x06) >> 1
-	shouldRetain := (ctrlFlags & 0x01) != 0
+	isDuplicate := (f.CtrlFlags & 0x08) != 0
+	QoS := (f.CtrlFlags & 0x06) >> 1
+	shouldRetain := (f.CtrlFlags & 0x01) != 0
 
 	pr := &pktReader{from: p}
 
@@ -80,8 +78,7 @@ func DeserializePublishPktPayload(ctrlFlags byte, p []byte) (*PublishPacket, err
 	// get payload
 	payloadLen := len(p) - variableHeaderLen
 	payload := pr.readBuf(payloadLen)
-	fmt.Printf("Payloadlen: %d\n", payloadLen)
-	pr.setErrIfPartsStillUnread()
+
 	if pr.err != nil {
 		return nil, pr.err
 	}

@@ -7,25 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// isValidFlagsSet returns true if the appropriate flags set
-// otherwise false
-func isValidFlagsSet(ctrlPktType uint8, flags uint8) bool {
-	// check section 2.2.2 on the default flags to be set
-	switch ctrlPktType {
-	case Publish:
-		// check section 3.3.1.2 on QoS
-		// from spec: A PUBLISH Packet MUST NOT have both QoS
-		// bits set to 1. If a Server or Client receives a PUBLISH
-		// Packet which has both QoS bits set to 1 it MUST close
-		// the Network Connection
-		return flags&0x06 != 0x06
-	case Pubrel, Subscribe, Unsubscribe:
-		return flags == 0x02
-	default:
-		return flags == 0x00
-	}
-}
-
 func TestConnectPacket(t *testing.T) {
 	t.Run("everything in connect packet set, happy path", func(t *testing.T) {
 		cfg := &ConnectPacketConfig{
@@ -48,13 +29,13 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// check fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
-		require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
+		require.True(t, f.IsValidFlagsSet())
 
 		// check payload
-		payload := serialized[len(serialized)-int(payloadSize):]
-		pktB, err := DeserializeConnectPktPayload(ctrlFlags, payload)
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
+		pktB, err := DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.NoError(t, err)
 		require.NotNil(t, pktB, "Deserialized connect pkt should not be nil")
 		require.Equal(t, pktA, pktB, "Deserialized connect pkt does not match original pkt")
@@ -75,12 +56,12 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// check fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
 
 		// check payload, should be an error
-		payload := serialized[len(serialized)-int(payloadSize):]
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -96,12 +77,12 @@ func TestConnectPacket(t *testing.T) {
 		serialized[0] = (Connect << 4) | 4
 
 		// check fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
 
 		// check payload, should be an error
-		payload := serialized[len(serialized)-int(payloadSize):]
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -114,19 +95,19 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// check fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
 
 		// set invalid protocol name & check err
-		payload := serialized[len(serialized)-int(payloadSize):]
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		copy(payload[:7], []byte{0, 4, 'A', 'B', 'C', 'D', 0x04})
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 
 		// set invalid protocol version & check err
 		copy(payload[:7], protocolVersion)
 		copy(payload[:7], []byte{0, 4, 'M', 'Q', 'T', 'T', 0x09})
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -139,13 +120,13 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
 
 		// set reserved connect flag to 1 and check error
-		payload := serialized[len(serialized)-int(payloadSize):]
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x01
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -159,13 +140,13 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
 
 		// set will QoS and willRetain to nonzero and check error
-		payload := serialized[len(serialized)-int(payloadSize):]
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x30
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -178,13 +159,13 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
 
 		// set will QoS to 3 and check error
-		payload := serialized[len(serialized)-int(payloadSize):]
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x18
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -197,13 +178,13 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
 
 		// set username flag and check error
-		payload := serialized[len(serialized)-int(payloadSize):]
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x80
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -216,13 +197,13 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
 
 		// set password flag and check error
-		payload := serialized[len(serialized)-int(payloadSize):]
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x40
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -237,13 +218,13 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
 
 		// check err
-		payload := serialized[len(serialized)-int(payloadSize):]
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x40
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -262,13 +243,13 @@ func TestConnectPacket(t *testing.T) {
 		require.Equal(t, pktA.Len(), len(serialized))
 
 		// fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connect)
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connect)
 
 		// set will flag and check for err
-		payload := serialized[len(serialized)-int(payloadSize):]
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[7] = payload[7] | 0x04
-		_, err = DeserializeConnectPktPayload(ctrlFlags, payload)
+		_, err = DeserializeConnectPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 }
@@ -284,13 +265,13 @@ func TestConnackPacket(t *testing.T) {
 		require.NotNil(t, serialized)
 
 		// check fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connack)
-		require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connack)
+		require.True(t, f.IsValidFlagsSet())
 
 		// check payload
-		payload := serialized[len(serialized)-int(payloadSize):]
-		pktRcvd, err := DeserializeConnackPktPayload(ctrlFlags, payload)
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
+		pktRcvd, err := DeserializeConnackPktPayload(f.CtrlFlags, payload)
 		require.NoError(t, err)
 		require.NotNil(t, pktRcvd, "Deserialized connect pkt should not be nil")
 		require.Equal(t, pkt, pktRcvd, "Deserialized connect pkt does not match original pkt")
@@ -303,13 +284,13 @@ func TestConnackPacket(t *testing.T) {
 		require.NotNil(t, serialized)
 
 		// check fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connack)
-		require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connack)
+		require.True(t, f.IsValidFlagsSet())
 
 		// check payload
-		payload := serialized[len(serialized)-int(payloadSize):]
-		_, err = DeserializeConnackPktPayload(ctrlFlags, payload[:1])
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
+		_, err = DeserializeConnackPktPayload(f.CtrlFlags, payload[:1])
 		require.Error(t, err)
 	})
 
@@ -323,13 +304,13 @@ func TestConnackPacket(t *testing.T) {
 		serialized[0] = serialized[0] | 0x0A
 
 		// check fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connack)
-		require.False(t, isValidFlagsSet(pktType, ctrlFlags))
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, f.PktType, Connack)
+		require.False(t, f.IsValidFlagsSet())
 
 		// check payload
-		payload := serialized[len(serialized)-int(payloadSize):]
-		_, err = DeserializeConnackPktPayload(ctrlFlags, payload)
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
+		_, err = DeserializeConnackPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -342,13 +323,13 @@ func TestConnackPacket(t *testing.T) {
 		require.NotNil(t, serialized)
 
 		// check fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connack)
-		require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, Connack, f.PktType)
+		require.True(t, f.IsValidFlagsSet())
 
 		// check payload
-		payload := serialized[len(serialized)-int(payloadSize):]
-		_, err = DeserializeConnackPktPayload(ctrlFlags, payload)
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
+		_, err = DeserializeConnackPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 
@@ -359,14 +340,14 @@ func TestConnackPacket(t *testing.T) {
 		require.NotNil(t, serialized)
 
 		// check fixed header
-		pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
-		require.Equal(t, pktType, Connack)
-		require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+		f, err := ReadFixedHeader(bytes.NewReader(serialized))
+		require.Equal(t, Connack, f.PktType)
+		require.True(t, f.IsValidFlagsSet())
 
 		// set connect ack flags to non-zero and check payload
-		payload := serialized[len(serialized)-int(payloadSize):]
+		payload := serialized[len(serialized)-int(f.PayloadSize):]
 		payload[0] = payload[0] | 0xFF
-		_, err = DeserializeConnackPktPayload(ctrlFlags, payload)
+		_, err = DeserializeConnackPktPayload(f.CtrlFlags, payload)
 		require.Error(t, err)
 	})
 }
@@ -379,11 +360,11 @@ func TestDisconnectPacket(t *testing.T) {
 	require.Equal(t, pkt.Len(), len(serialized))
 
 	// read fixed header
-	pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+	f, err := ReadFixedHeader(bytes.NewReader(serialized))
 	require.NoError(t, err)
-	require.Equal(t, uint32(0), payloadSize)
-	require.Equal(t, Disconnect, pktType)
-	require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+	require.Equal(t, uint32(0), f.PayloadSize)
+	require.Equal(t, Disconnect, f.PktType)
+	require.True(t, f.IsValidFlagsSet())
 }
 
 func TestPingreqtPacket(t *testing.T) {
@@ -394,11 +375,11 @@ func TestPingreqtPacket(t *testing.T) {
 	require.Equal(t, pkt.Len(), len(serialized))
 
 	// read fixed header
-	pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+	f, err := ReadFixedHeader(bytes.NewReader(serialized))
 	require.NoError(t, err)
-	require.Equal(t, uint32(0), payloadSize)
-	require.Equal(t, Pingreq, pktType)
-	require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+	require.Equal(t, uint32(0), f.PayloadSize)
+	require.Equal(t, Pingreq, f.PktType)
+	require.True(t, f.IsValidFlagsSet())
 }
 
 func TestPingresptPacket(t *testing.T) {
@@ -409,9 +390,9 @@ func TestPingresptPacket(t *testing.T) {
 	require.Equal(t, pkt.Len(), len(serialized))
 
 	// read fixed header
-	pktType, ctrlFlags, payloadSize, err := ReadFixedHeader(bytes.NewReader(serialized))
+	f, err := ReadFixedHeader(bytes.NewReader(serialized))
 	require.NoError(t, err)
-	require.Equal(t, uint32(0), payloadSize)
-	require.Equal(t, Pingresp, pktType)
-	require.True(t, isValidFlagsSet(pktType, ctrlFlags))
+	require.Equal(t, uint32(0), f.PayloadSize)
+	require.Equal(t, Pingresp, f.PktType)
+	require.True(t, f.IsValidFlagsSet())
 }
