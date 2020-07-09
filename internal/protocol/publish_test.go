@@ -40,4 +40,16 @@ func TestPublishPacket(t *testing.T) {
 		// find way to test for this?
 	})
 
+	t.Run("if QoS is 0, then dup flag must be 0", func(t *testing.T) {
+		// find way to test for this?
+	})
+
+	t.Run("publish flag must not have both QoS bits set to 1, ie QoS of value 3", func(t *testing.T) {
+		// this should be handled by use of fixedHeader.IsValidFlagsSet()
+	})
+
+	t.Run("topic name should be valid, plus not contain any wildcard characters", func(t *testing.T) {
+		// this should be handled by use of fixedHeader.IsValidFlagsSet()
+	})
+
 }

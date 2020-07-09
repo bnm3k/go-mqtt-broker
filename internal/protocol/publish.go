@@ -71,7 +71,7 @@ func DeserializePublishPktPayload(f FixedHeader, p []byte) (*PublishPacket, erro
 	// get packet identifier if QoS > 0
 	var packetIdentifier uint16 = 0
 	if QoS > 0 {
-		packetIdentifier = pr.readNum()
+		packetIdentifier = pr.readUInt16()
 		variableHeaderLen += 2
 	}
 
