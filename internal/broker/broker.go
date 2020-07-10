@@ -2,20 +2,30 @@ package broker
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"net"
 	"sync"
 
-	"github.com/nagamocha3000/go-mqtt-broker/internal/protocol"
+	p "github.com/nagamocha3000/go-mqtt-broker/internal/protocol"
+	"github.com/rs/xid"
 )
 
 // Broker encapsulates all the functionality of a MQTT broker plus
 // rules. It also holds shared resources such as topics or client IDs
 // that've been issued
 type Broker struct {
+	clientIDs map[string]bool
 	clientsWg sync.WaitGroup
 	onceClose sync.Once
 	quitCh    chan struct{}
+}
+
+// NewBroker returns a fresh instance of a Broker
+func NewBroker() *Broker {
+	return &Broker{
+		quitCh: make(chan struct{}),
+	}
 }
 
 // OnConn is an implementation of the server's ConnHandler.OnConn
@@ -29,33 +39,93 @@ func (b *Broker) OnConn(conn net.Conn) {
 	default:
 		b.clientsWg.Add(1) // add new client conn
 		go func() {
-			b.handleConn(conn)
-			b.clientsWg.Done() // indicate client done
+			defer func() {
+				conn.Close()
+				b.clientsWg.Done() // indicate client done
+			}()
+			clientSession, err := b.handleNewClientConnection(conn)
+			if err != nil {
+				// close connection
+				return
+			}
+			clientSession.readPackets()
 		}()
 	}
 
 }
 
-func (b *Broker) handleConn(conn net.Conn) {
+var errConn = errors.New("Client connection error occured")
+
+func (b *Broker) handleNewClientConnection(conn net.Conn) (*clientSession, error) {
 	// conn.SetDeadline(time.Now().Add(1 * time.Second))
-	defer conn.Close()
 	r := bufio.NewReader(conn)
-	for {
-		var buf []byte
-		// read fixed header
-		f, err := protocol.ReadFixedHeader(r)
+	var payload []byte
+	// read fixed header
+	f, err := p.ReadFixedHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if f.PktType != p.Connect || !f.IsValidFlagsSet() {
+		return nil, p.ErrInvalidPacket
+	}
+
+	// read rest of payload
+	if f.PayloadSize > 0 {
+		payload = make([]byte, f.PayloadSize)
+		_, err = io.ReadFull(r, payload)
 		if err != nil {
-			return
+			return nil, err
 		}
-		// read rest of payload
-		if f.PayloadSize > 0 {
-			buf = make([]byte, f.PayloadSize)
-			_, err = io.ReadFull(r, buf)
-			if err != nil {
-				return
+	}
+
+	// deserialize
+	pkt, err := p.DeserializeConnectPktPayload(f, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	// client session
+	cs := &clientSession{
+		id:   string(pkt.ClientIdentifier),
+		conn: conn,
+	}
+
+	// authenticate
+	if ok := b.authenticate(pkt.Username, pkt.Password); !ok {
+		cs.sendPacket(&p.ConnackPacket{Code: p.ConnRefusedBadUsernamePass})
+		return nil, errConn
+	}
+
+	// check given client identifier
+	if len(pkt.ClientIdentifier) > 0 {
+		if _, ok := b.clientIDs[string(pkt.ClientIdentifier)]; ok {
+			cs.sendPacket(&p.ConnackPacket{Code: p.ConnRefusedIdentifierRejected})
+			return nil, errConn
+		}
+	} else { // if no client identifier provided, assign one
+		continueTry := true
+		for continueTry {
+			newID := xid.New().String()
+			if _, ok := b.clientIDs[newID]; !ok {
+				b.clientIDs[newID] = true
+				pkt.ClientIdentifier = []byte(newID)
+				continueTry = false
 			}
 		}
 	}
+
+	// Check KeepAlive
+
+	// Check if should clean Session
+
+	// Check will message & topic
+
+	err = cs.sendPacket(&p.ConnackPacket{Code: p.ConnAccepted})
+	return cs, err
+}
+
+func (b *Broker) authenticate(username, password []byte) bool {
+	return true
 }
 
 // Close is an implementation of the server's ConnHandler.Close. It's

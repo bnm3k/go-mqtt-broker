@@ -14,16 +14,16 @@ import (
 type ConnectPacket struct {
 	usernamePresent  bool
 	passwordPresent  bool
-	willRetain       bool
-	willQoS          byte
-	willFlag         bool
-	cleanSession     bool   // ok
-	keepAlive        uint16 // ok
-	clientIdentifier []byte // ok
-	willTopic        []byte
-	willMessage      []byte
-	username         []byte // ok
-	password         []byte // ok
+	WillRetain       bool
+	WillQoS          byte
+	WillFlag         bool
+	CleanSession     bool   // ok
+	KeepAlive        uint16 // ok
+	ClientIdentifier []byte // ok
+	WillTopic        []byte
+	WillMessage      []byte
+	Username         []byte // ok
+	Password         []byte // ok
 }
 
 // ConnectPacketConfig is more of a necessary evil,
@@ -68,28 +68,28 @@ func NewConnectPacket(cfg *ConnectPacketConfig) (*ConnectPacket, error) {
 	}
 	p := new(ConnectPacket)
 	// setup username & password
-	p.clientIdentifier = cfg.ClientIdentifier
+	p.ClientIdentifier = cfg.ClientIdentifier
 	if len(cfg.Username) > 0 {
 		p.usernamePresent = true
-		p.username = cfg.Username
+		p.Username = cfg.Username
 		if len(cfg.Password) > 0 {
 			p.passwordPresent = true
-			p.password = cfg.Password
+			p.Password = cfg.Password
 		}
 	}
 
 	// setup will
 	if len(cfg.WillTopic) > 0 && len(cfg.WillMessage) > 0 {
-		p.willFlag = true
-		p.willQoS = cfg.WillQoS
-		p.willRetain = cfg.WillRetain
-		p.willTopic = cfg.WillTopic
-		p.willMessage = cfg.WillMessage
+		p.WillFlag = true
+		p.WillQoS = cfg.WillQoS
+		p.WillRetain = cfg.WillRetain
+		p.WillTopic = cfg.WillTopic
+		p.WillMessage = cfg.WillMessage
 	}
 
 	// setup other configurations
-	p.keepAlive = cfg.KeepAliveSeconds
-	p.cleanSession = cfg.ShouldCleanSession
+	p.KeepAlive = cfg.KeepAliveSeconds
+	p.CleanSession = cfg.ShouldCleanSession
 	return p, nil
 }
 
@@ -121,19 +121,19 @@ func (p *ConnectPacket) Serialize(b []byte) ([]byte, error) {
 	flags := p.getConnectFlagsByte()
 	buf.WriteByte(flags)
 	// write keep alive (msb then lsb)
-	buf.WriteByte(byte(p.keepAlive >> 8))
-	buf.WriteByte(byte(p.keepAlive))
+	buf.WriteByte(byte(p.KeepAlive >> 8))
+	buf.WriteByte(byte(p.KeepAlive))
 	// write payload
-	buf.writeMQTTStr(p.clientIdentifier)
-	if p.willFlag {
-		buf.writeMQTTStr(p.willTopic)
-		buf.writeMQTTStr(p.willMessage)
+	buf.writeMQTTStr(p.ClientIdentifier)
+	if p.WillFlag {
+		buf.writeMQTTStr(p.WillTopic)
+		buf.writeMQTTStr(p.WillMessage)
 	}
 	if p.usernamePresent {
-		buf.writeMQTTStr(p.username)
+		buf.writeMQTTStr(p.Username)
 	}
 	if p.passwordPresent {
-		buf.writeMQTTStr(p.password)
+		buf.writeMQTTStr(p.Password)
 	}
 
 	return b[:buf.bytesWritten()], nil
@@ -180,34 +180,34 @@ func DeserializeConnectPktPayload(f FixedHeader, p []byte) (*ConnectPacket, erro
 	pkt := &ConnectPacket{
 		usernamePresent: usernamePresent,
 		passwordPresent: passwordPresent,
-		willRetain:      willRetain,
-		willQoS:         willQoS,
-		willFlag:        willFlag,
-		cleanSession:    (flags & 0x02) == 0x02,
-		keepAlive:       (uint16(p[8]) << 8) + uint16(p[9]),
+		WillRetain:      willRetain,
+		WillQoS:         willQoS,
+		WillFlag:        willFlag,
+		CleanSession:    (flags & 0x02) == 0x02,
+		KeepAlive:       (uint16(p[8]) << 8) + uint16(p[9]),
 	}
 
 	pr := &pktReader{from: p, i: 10}
 	// get client identifier
-	pkt.clientIdentifier = pr.readStr()
+	pkt.ClientIdentifier = pr.readStr()
 
 	// if client sets cleanSession to false but does not
 	// provde a client ID, packet is invalid
-	if pkt.clientIdentifier == nil && !pkt.cleanSession {
+	if pkt.ClientIdentifier == nil && !pkt.CleanSession {
 		return nil, ErrInvalidPacket
 	}
 	// get will flag & will message
-	if pkt.willFlag {
-		pkt.willTopic = pr.readStr()
-		pkt.willMessage = pr.readStr()
+	if pkt.WillFlag {
+		pkt.WillTopic = pr.readStr()
+		pkt.WillMessage = pr.readStr()
 	}
 	// get username
 	if pkt.usernamePresent {
-		pkt.username = pr.readStr()
+		pkt.Username = pr.readStr()
 	}
 	// get password
 	if pkt.passwordPresent {
-		pkt.password = pr.readStr()
+		pkt.Password = pr.readStr()
 	}
 
 	return pkt, pr.err
@@ -221,14 +221,14 @@ func (p *ConnectPacket) getConnectFlagsByte() byte {
 			b = b | 0x40
 		}
 	}
-	if p.willRetain {
+	if p.WillRetain {
 		b = b | 0x20
 	}
-	b = b | (p.willQoS << 3)
-	if p.willFlag {
+	b = b | (p.WillQoS << 3)
+	if p.WillFlag {
 		b = b | 0x04
 	}
-	if p.cleanSession {
+	if p.CleanSession {
 		b = b | 0x02
 	}
 	return b
@@ -237,15 +237,15 @@ func (p *ConnectPacket) getConnectFlagsByte() byte {
 // PayloadLen returns length of payload, ie minus fixed header size
 func (p *ConnectPacket) payloadLen() int {
 	payloadLen := 10 + // variable Header
-		2 + len(p.clientIdentifier)
-	if p.willFlag {
-		payloadLen += 2 + len(p.willTopic) + 2 + len(p.willMessage)
+		2 + len(p.ClientIdentifier)
+	if p.WillFlag {
+		payloadLen += 2 + len(p.WillTopic) + 2 + len(p.WillMessage)
 	}
 	if p.usernamePresent {
-		payloadLen += 2 + len(p.username)
+		payloadLen += 2 + len(p.Username)
 	}
 	if p.passwordPresent {
-		payloadLen += 2 + len(p.password)
+		payloadLen += 2 + len(p.Password)
 	}
 	return payloadLen
 }
@@ -265,8 +265,8 @@ func (p *ConnectPacket) Len() int {
 // ConnackPacket holds the in-memory representation of
 // a connack packet
 type ConnackPacket struct {
-	SessionPresent    bool
-	ConnectReturnCode ConnectReturnCode
+	Code           ConnectReturnCode
+	SessionPresent bool
 }
 
 // ConnectReturnCode holds the return code for
@@ -325,8 +325,8 @@ func DeserializeConnackPktPayload(f FixedHeader, p []byte) (*ConnackPacket, erro
 		return nil, ErrInvalidPacket
 	}
 	pkt := &ConnackPacket{
-		SessionPresent:    (connAckFlags & 0x01) == 0x01,
-		ConnectReturnCode: ConnectReturnCode(cr),
+		SessionPresent: (connAckFlags & 0x01) == 0x01,
+		Code:           ConnectReturnCode(cr),
 	}
 	return pkt, nil
 }
@@ -350,7 +350,7 @@ func (p *ConnackPacket) Serialize(b []byte) ([]byte, error) {
 	} else {
 		b[2] = 0
 	}
-	b[3] = byte(p.ConnectReturnCode)
+	b[3] = byte(p.Code)
 	return b[:4], nil
 }
 
@@ -365,8 +365,8 @@ func (p *ConnackPacket) Len() int {
 // client to check whether their connection was accepted and if not, the
 // reason why
 func (p *ConnackPacket) ConnectionAccepted() (ok bool, description string) {
-	ok = p.ConnectReturnCode == ConnAccepted
-	description = p.ConnectReturnCode.String()
+	ok = p.Code == ConnAccepted
+	description = p.Code.String()
 	return
 }
 

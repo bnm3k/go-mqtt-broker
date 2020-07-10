@@ -48,7 +48,7 @@ func TestConnectPacket(t *testing.T) {
 		}
 
 		pktA, err := NewConnectPacket(cfg)
-		pktA.clientIdentifier = nil // remove client identifier
+		pktA.ClientIdentifier = nil // remove client identifier
 		require.NoError(t, err)
 
 		serialized, err := pktA.Serialize(make([]byte, pktA.Len()))
@@ -134,7 +134,7 @@ func TestConnectPacket(t *testing.T) {
 		pktA, err := NewConnectPacket(&ConnectPacketConfig{ShouldCleanSession: true})
 		require.NoError(t, err)
 
-		pktA.willFlag = false
+		pktA.WillFlag = false
 		serialized, err := pktA.Serialize(make([]byte, pktA.Len()))
 		require.NoError(t, err)
 		require.Equal(t, pktA.Len(), len(serialized))
@@ -212,7 +212,7 @@ func TestConnectPacket(t *testing.T) {
 		require.NoError(t, err)
 
 		pktA.passwordPresent = true
-		pktA.password = []byte("password")
+		pktA.Password = []byte("password")
 		serialized, err := pktA.Serialize(make([]byte, pktA.Len()))
 		require.NoError(t, err)
 		require.Equal(t, pktA.Len(), len(serialized))
@@ -257,8 +257,8 @@ func TestConnectPacket(t *testing.T) {
 func TestConnackPacket(t *testing.T) {
 	t.Run("everything ok", func(t *testing.T) {
 		pkt := &ConnackPacket{
-			SessionPresent:    false,
-			ConnectReturnCode: ConnAccepted,
+			SessionPresent: false,
+			Code:           ConnAccepted,
 		}
 		serialized, err := pkt.Serialize(nil)
 		require.NoError(t, err)
@@ -316,7 +316,7 @@ func TestConnackPacket(t *testing.T) {
 
 	t.Run("connect return code should not use reserved values", func(t *testing.T) {
 		pkt := &ConnackPacket{
-			ConnectReturnCode: 10,
+			Code: 10,
 		}
 		serialized, err := pkt.Serialize(nil)
 		require.NoError(t, err)
