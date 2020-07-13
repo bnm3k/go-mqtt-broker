@@ -8,6 +8,7 @@ import (
 
 	p "github.com/nagamocha3000/go-mqtt-broker/internal/protocol"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFeed(t *testing.T) {
@@ -59,7 +60,17 @@ func TestFeed(t *testing.T) {
 }
 
 func TestUnsubscribeFeed(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pkt := &p.PublishPacket{
+		QoS:              1,
+		PacketIdentifier: 10,
+		Dup:              true,
+		Retain:           true,
+		TopicName:        []byte("foo/bar/baz"),
+		Payload:          []byte("abcde"),
+	}
+
 	t.Run("Unsubscribe from pending", func(t *testing.T) {
 		var (
 			feed = NewFeed()
@@ -80,6 +91,7 @@ func TestUnsubscribeFeed(t *testing.T) {
 		assert.Equal(t, 0, len(feed.pendingSubs))
 		assert.Equal(t, 2, len(feed.cases))
 	})
+
 	t.Run("Unsubscribe during sending", func(t *testing.T) {
 		var (
 			feed = NewFeed()
@@ -89,35 +101,36 @@ func TestUnsubscribeFeed(t *testing.T) {
 			sub2 = feed.Subscribe(ch2)
 			wg   sync.WaitGroup
 		)
-		defer sub2.Unsubscribe()
 
 		wg.Add(1)
 		go func() {
-			feed.Publish(ctx, nil)
+			nSent := feed.Publish(ctx, pkt)
+			require.Equal(t, 2, nSent)
 			wg.Done()
 		}()
 
 		// receive on Ch1 then unsubscribe
 		<-ch1
-		assert.Equal(t, 0, len(feed.pendingSubs))
-		assert.Equal(t, 4, len(feed.cases))
+		require.Equal(t, 0, len(feed.pendingSubs))
+		require.Equal(t, 4, len(feed.cases))
 		sub1.Unsubscribe()
-		assert.Equal(t, 3, len(feed.cases))
 
 		// receive on Ch2
 		<-ch2
 		wg.Wait()
+		require.Equal(t, 3, len(feed.cases))
 
 		// publish again
 		wg.Add(1)
 		go func() {
-			feed.Publish(ctx, nil)
+			nSent := feed.Publish(ctx, pkt)
+			require.Equal(t, 1, nSent)
 			wg.Done()
 		}()
 		<-ch2
-		assert.Equal(t, 3, len(feed.cases))
+		require.Equal(t, 3, len(feed.cases))
 		sub2.Unsubscribe()
-		assert.Equal(t, 2, len(feed.cases))
+		require.Equal(t, 2, len(feed.cases))
 		wg.Wait()
 	})
 }

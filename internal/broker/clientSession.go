@@ -4,24 +4,68 @@ import (
 	"bufio"
 	"io"
 	"net"
+	"sync"
 
 	p "github.com/nagamocha3000/go-mqtt-broker/internal/protocol"
 )
 
 type clientSession struct {
-	conn net.Conn
-	id   string
+	conn       net.Conn
+	id         string
+	broker     *Broker
+	onceClose  sync.Once
+	closeSigCh chan struct{}
 }
 
-func (c *clientSession) readPackets() {
-	r := mqttPacketReader{bufio.NewReader(c.conn)}
+func newClientSession(id string, conn net.Conn) *clientSession {
+	return &clientSession{
+		id:         id,
+		conn:       conn,
+		closeSigCh: make(chan struct{}),
+	}
+}
+
+func (c *clientSession) start() {
+	// handler for incoming pkts
+	handlePacket := func(f p.FixedHeader, payload []byte) {
+		switch f.PktType {
+		case p.Pingreq:
+			c.sendPacket(&p.PingrespPacket{})
+		case p.Publish:
+		case p.Subscribe:
+		case p.Pingresp:
+		case p.Disconnect:
+
+		}
+	}
+	// read incoming pkts
+	go func() {
+		r := mqttPacketReader{bufio.NewReader(c.conn)}
+		for {
+			f, payload, err := r.readPkt()
+			if err != nil {
+				c.close()
+				return
+			}
+			handlePacket(f, payload)
+		}
+	}()
+
+	// monitor
 	for {
-		f, payload, err := r.readPkt()
-		if err != nil {
+
+		select {
+		case <-c.closeSigCh:
 			return
 		}
-		c.handlePacket(f, payload)
 	}
+
+}
+
+func (c *clientSession) close() {
+	c.onceClose.Do(func() {
+		close(c.closeSigCh)
+	})
 }
 
 func (c *clientSession) sendPacket(pkt p.Packet) (err error) {
@@ -31,10 +75,6 @@ func (c *clientSession) sendPacket(pkt p.Packet) (err error) {
 		_, err = c.conn.Write(p)
 	}
 	return
-}
-
-func (c *clientSession) handlePacket(f p.FixedHeader, payload []byte) {
-
 }
 
 type mqttPacketReader struct {

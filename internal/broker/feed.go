@@ -112,7 +112,6 @@ func (f *Feed) Publish(ctx context.Context, pkt *p.PublishPacket) (nSent int) {
 	currCases := f.cases
 
 	for {
-
 		// first send to all those that can receive without blocking
 		for i := firstSubSendCase; i < len(currCases); i++ {
 			if currCases[i].Chan.TrySend(rval) {
@@ -133,9 +132,13 @@ func (f *Feed) Publish(ctx context.Context, pkt *p.PublishPacket) (nSent int) {
 		} else if chosen == 1 { // <-f.removeSub
 			sub := recv.Interface().(*sub)
 			index := caseFindIndex(f.cases, sub.channel)
-			f.cases = caseDelete(f.cases, index)
-			if index >= 0 && index < len(currCases) {
-				currCases = caseDelete(currCases, index)
+			// remove from f.cases
+			if index >= firstSubSendCase {
+				f.cases = caseDelete(f.cases, index)
+				// also remove from currCases if it's there
+				if index < len(currCases) {
+					currCases = caseDelete(currCases, index)
+				}
 			}
 		} else {
 			currCases = caseDelete(currCases, chosen)

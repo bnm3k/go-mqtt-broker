@@ -3,9 +3,9 @@ package broker
 import (
 	"bufio"
 	"errors"
-	"io"
 	"net"
 	"sync"
+	"time"
 
 	p "github.com/nagamocha3000/go-mqtt-broker/internal/protocol"
 	"github.com/rs/xid"
@@ -15,16 +15,18 @@ import (
 // rules. It also holds shared resources such as topics or client IDs
 // that've been issued
 type Broker struct {
-	clientIDs map[string]bool
-	clientsWg sync.WaitGroup
-	onceClose sync.Once
-	quitCh    chan struct{}
+	clientIDs    map[string]bool
+	clientsWg    sync.WaitGroup
+	onceClose    sync.Once
+	quitCh       chan struct{}
+	connDeadline time.Duration
 }
 
 // NewBroker returns a fresh instance of a Broker
 func NewBroker() *Broker {
 	return &Broker{
-		quitCh: make(chan struct{}),
+		quitCh:       make(chan struct{}),
+		connDeadline: 1 * time.Second,
 	}
 }
 
@@ -48,7 +50,7 @@ func (b *Broker) OnConn(conn net.Conn) {
 				// close connection
 				return
 			}
-			clientSession.readPackets()
+			clientSession.start()
 		}()
 	}
 
@@ -57,25 +59,14 @@ func (b *Broker) OnConn(conn net.Conn) {
 var errConn = errors.New("Client connection error occured")
 
 func (b *Broker) handleNewClientConnection(conn net.Conn) (*clientSession, error) {
-	// conn.SetDeadline(time.Now().Add(1 * time.Second))
-	r := bufio.NewReader(conn)
-	var payload []byte
-	// read fixed header
-	f, err := p.ReadFixedHeader(r)
+	// set deadline
+	//conn.SetDeadline(time.Now().Add(b.connDeadline))
+
+	// read first packet, should be connect
+	r := mqttPacketReader{bufio.NewReader(conn)}
+	f, payload, err := r.readPkt()
 	if err != nil {
 		return nil, err
-	}
-	if f.PktType != p.Connect || !f.IsValidFlagsSet() {
-		return nil, p.ErrInvalidPacket
-	}
-
-	// read rest of payload
-	if f.PayloadSize > 0 {
-		payload = make([]byte, f.PayloadSize)
-		_, err = io.ReadFull(r, payload)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// deserialize
@@ -84,11 +75,8 @@ func (b *Broker) handleNewClientConnection(conn net.Conn) (*clientSession, error
 		return nil, err
 	}
 
-	// client session
-	cs := &clientSession{
-		id:   string(pkt.ClientIdentifier),
-		conn: conn,
-	}
+	// instantiate client session
+	cs := newClientSession(string(pkt.ClientIdentifier), conn)
 
 	// authenticate
 	if ok := b.authenticate(pkt.Username, pkt.Password); !ok {
@@ -103,16 +91,18 @@ func (b *Broker) handleNewClientConnection(conn net.Conn) (*clientSession, error
 			return nil, errConn
 		}
 	} else { // if no client identifier provided, assign one
-		continueTry := true
-		for continueTry {
+		for {
 			newID := xid.New().String()
 			if _, ok := b.clientIDs[newID]; !ok {
 				b.clientIDs[newID] = true
-				pkt.ClientIdentifier = []byte(newID)
-				continueTry = false
+				cs.id = newID
+				break
 			}
 		}
 	}
+
+	// unset deadline
+	// conn.SetDeadline(time.Time{})
 
 	// Check KeepAlive
 
