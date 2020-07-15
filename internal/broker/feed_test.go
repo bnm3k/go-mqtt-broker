@@ -13,7 +13,7 @@ import (
 
 func TestFeed(t *testing.T) {
 	var feed = NewFeed()
-	var done, subscribed sync.WaitGroup
+	var done, subscribed, unsubscribed sync.WaitGroup
 	pkt := &p.PublishPacket{
 		QoS:              1,
 		PacketIdentifier: 10,
@@ -24,7 +24,6 @@ func TestFeed(t *testing.T) {
 	}
 
 	subscriber := func(i int) {
-		defer done.Done()
 		ch := make(chan *p.PublishPacket)
 		sub := feed.Subscribe(ch)
 		subscribed.Done()
@@ -33,29 +32,40 @@ func TestFeed(t *testing.T) {
 		defer timeout.Stop()
 		select {
 		case v := <-ch:
-			assert.Equal(t, pkt, v)
+			require.Equal(t, pkt, v)
 		case <-timeout.C:
 			t.Errorf("%d: receive timeout", i)
 		}
 
 		sub.Unsubscribe()
+		unsubscribed.Done()
+		done.Done()
 	}
 
 	const n = 1000
-	done.Add(n)
 	subscribed.Add(n)
+	unsubscribed.Add(n)
+	done.Add(n)
+	require.Equal(t, 0, len(feed.pendingSubs))
+	require.Equal(t, 2, len(feed.cases))
 	for i := 0; i < n; i++ {
 		go subscriber(i)
 	}
+
 	subscribed.Wait()
-	ctx := context.Background()
+	require.Equal(t, n, len(feed.pendingSubs))
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Second))
+	defer cancel()
 	// first send
 	nsent := feed.Publish(ctx, pkt)
-	assert.Equal(t, n, nsent)
+	require.Equal(t, n, nsent)
+
+	unsubscribed.Wait()
+	require.Equal(t, 2, len(feed.cases))
 
 	// after first send, each subscriber unsubs
 	nsent = feed.Publish(ctx, pkt)
-	assert.Equal(t, 0, nsent)
+	require.Equal(t, 0, nsent)
 	done.Wait()
 }
 

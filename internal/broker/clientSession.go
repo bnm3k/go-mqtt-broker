@@ -15,6 +15,7 @@ type clientSession struct {
 	broker     *Broker
 	onceClose  sync.Once
 	closeSigCh chan struct{}
+	willFlag   bool
 }
 
 func newClientSession(id string, conn net.Conn) *clientSession {
@@ -26,35 +27,65 @@ func newClientSession(id string, conn net.Conn) *clientSession {
 }
 
 func (c *clientSession) start() {
+
+	// channel for messages client has subscribed to
+	messagesCh := make(chan *p.PublishPacket)
+
 	// handler for incoming pkts
 	handlePacket := func(f p.FixedHeader, payload []byte) {
 		switch f.PktType {
 		case p.Pingreq:
 			c.sendPacket(&p.PingrespPacket{})
 		case p.Publish:
-		case p.Subscribe:
-		case p.Pingresp:
-		case p.Disconnect:
-
-		}
-	}
-	// read incoming pkts
-	go func() {
-		r := mqttPacketReader{bufio.NewReader(c.conn)}
-		for {
-			f, payload, err := r.readPkt()
+			_, err := p.DeserializePublishPktPayload(f, payload)
 			if err != nil {
 				c.close()
 				return
 			}
-			handlePacket(f, payload)
+		case p.Subscribe:
+			_, err := p.DeserializeSubscribePktPayload(f, payload)
+			if err != nil {
+				c.close()
+				return
+			}
+			// send suback
+		case p.Unsubscribe:
+			pkt, err := p.DeserializeUnsubscribePktPayload(f, payload)
+			if err != nil {
+				c.close()
+				return
+			}
+			ackPkt := p.UnsubackPacket{PacketIdentifier: pkt.PacketIdentifier}
+			c.sendPacket(&ackPkt)
+		case p.Disconnect:
+			c.willFlag = false
+			c.close()
+		default:
+			c.close()
+		}
+	}
+
+	// read incoming pkts
+	go func() {
+		r := mqttPacketReader{bufio.NewReader(c.conn)}
+		for {
+			select {
+			case <-c.closeSigCh:
+				return
+			default:
+				f, payload, err := r.readPkt()
+				if err != nil || !f.IsValidFlagsSet() {
+					return
+				}
+				handlePacket(f, payload)
+			}
 		}
 	}()
 
 	// monitor
 	for {
-
 		select {
+		case <-messagesCh:
 		case <-c.closeSigCh:
 			return
 		}

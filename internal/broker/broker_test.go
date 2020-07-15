@@ -63,6 +63,18 @@ func TestBroker(t *testing.T) {
 	require.True(t, f.PayloadSize == 0)
 	require.True(t, p == nil || len(p) == 0)
 
+	// send disconnect packet
+	disconnectPkt := protocol.DisconnectPacket{}
+	buf, err = (&disconnectPkt).Serialize(nil)
+	require.NoError(t, err)
+	n, err = clientSide.Write(buf)
+	require.NoError(t, err)
+	require.Equal(t, len(buf), n)
+
+	// next write should fail
+	n, err = clientSide.Write(buf)
+	require.Error(t, err)
+
 	// end connection
 	clientSide.Close()
 	wg.Wait()
