@@ -8,9 +8,26 @@ import (
 	p "github.com/nagamocha3000/go-mqtt-broker/internal/protocol"
 )
 
-// PublishPacket ...
-type PublishPacket struct {
-	msg string
+// PublishEvent holds a publish event. Note that the topic
+// might not the topic in the raw packet particularly in the case
+// where the client subscribed using wildcard(s).
+type PublishEvent struct {
+	Topic  string
+	RawPkt *p.PublishPacket
+}
+
+// Subscription ...
+type Subscription struct {
+	feed            *Feed
+	channel         chan<- *PublishEvent
+	onceUnsubscribe sync.Once
+}
+
+// Unsubscribe ...
+func (s *Subscription) Unsubscribe() {
+	s.onceUnsubscribe.Do(func() {
+		s.feed.remove(s)
+	})
 }
 
 // Feed ...
@@ -21,7 +38,7 @@ type Feed struct {
 	cases    []reflect.SelectCase
 
 	// for remove during a send (interrupts)
-	removeSubCh chan *sub
+	removeSubCh chan *Subscription
 
 	// holds newly subsribed channels until they are added to cases
 	pendingMu   sync.Mutex
@@ -39,7 +56,7 @@ var emptySelectCase reflect.SelectCase
 func NewFeed(topic string) *Feed {
 	f := new(Feed)
 	f.topic = topic
-	f.removeSubCh = make(chan *sub)
+	f.removeSubCh = make(chan *Subscription)
 	f.sendLock = make(chan struct{}, 1)
 	f.sendLock <- struct{}{}
 	f.cases = []reflect.SelectCase{
@@ -50,8 +67,8 @@ func NewFeed(topic string) *Feed {
 }
 
 // Subscribe ...
-func (f *Feed) Subscribe(ch chan *p.PublishPacket) Subscription {
-	sub := &sub{
+func (f *Feed) Subscribe(ch chan<- *PublishEvent) *Subscription {
+	sub := &Subscription{
 		feed:    f,
 		channel: ch,
 	}
@@ -68,7 +85,7 @@ func (f *Feed) Subscribe(ch chan *p.PublishPacket) Subscription {
 }
 
 // Remove ...
-func (f *Feed) remove(sub *sub) {
+func (f *Feed) remove(sub *Subscription) {
 	// if in pending, delete first
 	f.pendingMu.Lock()
 	for i := 0; i < len(f.pendingSubs); i++ {
@@ -93,7 +110,7 @@ func (f *Feed) remove(sub *sub) {
 }
 
 // Publish ...
-func (f *Feed) Publish(ctx context.Context, pkt *p.PublishPacket) (nSent int) {
+func (f *Feed) Publish(ctx context.Context, rawPkt *p.PublishPacket) (nSent int) {
 	<-f.sendLock
 
 	// add new cases from pending subs
@@ -103,7 +120,10 @@ func (f *Feed) Publish(ctx context.Context, pkt *p.PublishPacket) (nSent int) {
 	f.pendingMu.Unlock()
 
 	// set up rval & the send on all channels
-	rval := reflect.ValueOf(pkt)
+	rval := reflect.ValueOf(&PublishEvent{
+		Topic:  f.topic,
+		RawPkt: rawPkt,
+	})
 	for i := firstSubSendCase; i < len(f.cases); i++ {
 		f.cases[i].Send = rval
 	}
@@ -134,7 +154,7 @@ func (f *Feed) Publish(ctx context.Context, pkt *p.PublishPacket) (nSent int) {
 		if chosen == 0 { // <-ctx.Done()
 			break
 		} else if chosen == 1 { // <-f.removeSub
-			sub := recv.Interface().(*sub)
+			sub := recv.Interface().(*Subscription)
 			index := caseFindIndex(f.cases, sub.channel)
 			// remove from f.cases
 			if index >= firstSubSendCase {
@@ -160,7 +180,7 @@ func (f *Feed) Publish(ctx context.Context, pkt *p.PublishPacket) (nSent int) {
 	return nSent
 }
 
-func caseFindIndex(cs []reflect.SelectCase, ch chan *p.PublishPacket) int {
+func caseFindIndex(cs []reflect.SelectCase, ch chan<- *PublishEvent) int {
 	for i := firstSubSendCase; i < len(cs); i++ {
 		if cs[i].Chan.Interface() == ch {
 			return i
@@ -173,21 +193,4 @@ func caseDelete(cs []reflect.SelectCase, index int) []reflect.SelectCase {
 	last := len(cs) - 1
 	cs[index], cs[last] = cs[last], cs[index]
 	return cs[:last]
-}
-
-// Subscription ...
-type Subscription interface {
-	Unsubscribe()
-}
-
-type sub struct {
-	feed            *Feed
-	channel         chan *p.PublishPacket
-	onceUnsubscribe sync.Once
-}
-
-func (s *sub) Unsubscribe() {
-	s.onceUnsubscribe.Do(func() {
-		s.feed.remove(s)
-	})
 }

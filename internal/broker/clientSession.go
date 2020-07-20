@@ -10,19 +10,22 @@ import (
 )
 
 type clientSession struct {
-	conn       net.Conn
-	id         string
-	broker     *Broker
-	onceClose  sync.Once
-	closeSigCh chan struct{}
-	willFlag   bool
+	closeSigCh    chan struct{}
+	conn          net.Conn
+	id            string
+	subscriptions map[string]Subscription
+	topicMap      TopicMap
+
+	willFlag  bool
+	onceClose sync.Once
 }
 
-func newClientSession(id string, conn net.Conn) *clientSession {
+func newClientSession(id string, conn net.Conn, tm TopicMap) *clientSession {
 	return &clientSession{
-		id:         id,
-		conn:       conn,
 		closeSigCh: make(chan struct{}),
+		conn:       conn,
+		id:         id,
+		topicMap:   tm,
 	}
 }
 

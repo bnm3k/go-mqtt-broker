@@ -9,7 +9,6 @@ import (
 
 // node holds a level for a wildcard match
 type node struct {
-	str      string
 	children map[string]*node
 	feed     *Feed
 }
@@ -34,7 +33,6 @@ func NewTopicMap() TopicMap {
 	//var rwLock sync.RWMutex
 	return TopicMap{
 		root: &node{
-			str:      "::root::",
 			children: make(map[string]*node),
 		},
 		rwLock:      &sync.RWMutex{},
@@ -66,7 +64,6 @@ func (m TopicMap) InitFeedByTopic(topic string, tokens []TopicToken) (*Feed, boo
 		next, present := curr.children[token.Value]
 		if !present {
 			next = &node{
-				str:      token.Value,
 				children: make(map[string]*node),
 			}
 			curr.children[token.Value] = next

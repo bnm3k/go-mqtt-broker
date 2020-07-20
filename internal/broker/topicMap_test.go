@@ -8,7 +8,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/nagamocha3000/go-mqtt-broker/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -323,7 +322,7 @@ func TestTopicMap_GetFeedsThatMatchTopic_AllPermutations(t *testing.T) {
 
 	allWildcardPermutations := generateTokenWildcardPermutations(topic)
 
-	ch := make(chan *protocol.PublishPacket, len(allWildcardPermutations))
+	ch := make(chan *PublishEvent, len(allWildcardPermutations))
 	m := NewTopicMap()
 	for _, tp := range allWildcardPermutations {
 		feed, alreadyPresent := m.InitFeedByTopic(tp.str, tp.tokens)

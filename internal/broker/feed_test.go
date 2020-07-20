@@ -24,7 +24,7 @@ func TestFeed(t *testing.T) {
 	}
 
 	subscriber := func(i int) {
-		ch := make(chan *p.PublishPacket)
+		ch := make(chan *PublishEvent)
 		sub := feed.Subscribe(ch)
 		subscribed.Done()
 
@@ -32,7 +32,7 @@ func TestFeed(t *testing.T) {
 		defer timeout.Stop()
 		select {
 		case v := <-ch:
-			require.Equal(t, pkt, v)
+			require.Equal(t, pkt, v.RawPkt)
 		case <-timeout.C:
 			t.Errorf("%d: receive timeout", i)
 		}
@@ -84,8 +84,8 @@ func TestUnsubscribeFeed(t *testing.T) {
 	t.Run("Unsubscribe from pending", func(t *testing.T) {
 		var (
 			feed = NewFeed("-")
-			ch1  = make(chan *p.PublishPacket)
-			ch2  = make(chan *p.PublishPacket)
+			ch1  = make(chan *PublishEvent)
+			ch2  = make(chan *PublishEvent)
 			sub1 = feed.Subscribe(ch1)
 			sub2 = feed.Subscribe(ch1)
 			sub3 = feed.Subscribe(ch2)
@@ -105,8 +105,8 @@ func TestUnsubscribeFeed(t *testing.T) {
 	t.Run("Unsubscribe during sending", func(t *testing.T) {
 		var (
 			feed = NewFeed("-")
-			ch1  = make(chan *p.PublishPacket)
-			ch2  = make(chan *p.PublishPacket)
+			ch1  = make(chan *PublishEvent)
+			ch2  = make(chan *PublishEvent)
 			sub1 = feed.Subscribe(ch1)
 			sub2 = feed.Subscribe(ch2)
 			wg   sync.WaitGroup

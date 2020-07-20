@@ -20,13 +20,16 @@ type Broker struct {
 	onceClose    sync.Once
 	quitCh       chan struct{}
 	connDeadline time.Duration
+	topicMap     TopicMap
 }
 
 // NewBroker returns a fresh instance of a Broker
 func NewBroker() *Broker {
 	return &Broker{
+		clientIDs:    make(map[string]bool),
 		quitCh:       make(chan struct{}),
 		connDeadline: 1 * time.Second,
+		topicMap:     NewTopicMap(),
 	}
 }
 
@@ -51,9 +54,9 @@ func (b *Broker) OnConn(conn net.Conn) {
 				return
 			}
 			clientSession.start()
+			// on end, remove client ID
 		}()
 	}
-
 }
 
 var errConn = errors.New("Client connection error occured")
@@ -76,7 +79,7 @@ func (b *Broker) handleNewClientConnection(conn net.Conn) (*clientSession, error
 	}
 
 	// instantiate client session
-	cs := newClientSession(string(pkt.ClientIdentifier), conn)
+	cs := newClientSession(string(pkt.ClientIdentifier), conn, b.topicMap)
 
 	// authenticate
 	if ok := b.authenticate(pkt.Username, pkt.Password); !ok {
