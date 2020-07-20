@@ -12,7 +12,7 @@ import (
 )
 
 func TestFeed(t *testing.T) {
-	var feed = NewFeed()
+	var feed = NewFeed("-")
 	var done, subscribed, unsubscribed sync.WaitGroup
 	pkt := &p.PublishPacket{
 		QoS:              1,
@@ -83,7 +83,7 @@ func TestUnsubscribeFeed(t *testing.T) {
 
 	t.Run("Unsubscribe from pending", func(t *testing.T) {
 		var (
-			feed = NewFeed()
+			feed = NewFeed("-")
 			ch1  = make(chan *p.PublishPacket)
 			ch2  = make(chan *p.PublishPacket)
 			sub1 = feed.Subscribe(ch1)
@@ -104,7 +104,7 @@ func TestUnsubscribeFeed(t *testing.T) {
 
 	t.Run("Unsubscribe during sending", func(t *testing.T) {
 		var (
-			feed = NewFeed()
+			feed = NewFeed("-")
 			ch1  = make(chan *p.PublishPacket)
 			ch2  = make(chan *p.PublishPacket)
 			sub1 = feed.Subscribe(ch1)

@@ -1,4 +1,4 @@
-package topics
+package broker
 
 import "errors"
 
@@ -17,9 +17,9 @@ const (
 	MultiLevelMatch
 )
 
-// TopicMatch holds a match for a topic filter
+// TopicToken holds a match for a topic filter
 // plust whether it's a plain string or a wildcard
-type TopicMatch struct {
+type TopicToken struct {
 	Value     string
 	MatchType MatchType
 }
@@ -27,7 +27,7 @@ type TopicMatch struct {
 // ParseTopic parses a given bytes slice into a slice of topic filters
 // each representing a topic level. For use mainly with Subscribe/Unsubscribe packets
 // which might contain wildcards.
-func ParseTopic(b []byte) (topics []TopicMatch, hasWildcard bool, err error) {
+func ParseTopic(b []byte) (tokens []TopicToken, hasWildcard bool, err error) {
 	if len(b) == 0 {
 		// topic name must have 1 or more characters
 		return nil, false, ErrInvalidTopicName
@@ -46,11 +46,11 @@ func ParseTopic(b []byte) (topics []TopicMatch, hasWildcard bool, err error) {
 			if i != last {
 				return nil, false, ErrInvalidTopicName
 			}
-			topics = append(topics, TopicMatch{
+			tokens = append(tokens, TopicToken{
 				Value:     "#",
 				MatchType: MultiLevelMatch,
 			})
-			return topics, true, nil
+			return tokens, true, nil
 		}
 
 		// single level wildcard should take up a whole level by itseld
@@ -62,7 +62,7 @@ func ParseTopic(b []byte) (topics []TopicMatch, hasWildcard bool, err error) {
 			if i != 0 && b[i-1] != '/' {
 				return nil, false, ErrInvalidTopicName
 			}
-			topics = append(topics, TopicMatch{
+			tokens = append(tokens, TopicToken{
 				Value:     "+",
 				MatchType: SingleLevelMatch,
 			})
@@ -73,7 +73,7 @@ func ParseTopic(b []byte) (topics []TopicMatch, hasWildcard bool, err error) {
 		}
 
 		if c == '/' {
-			topics = append(topics, TopicMatch{
+			tokens = append(tokens, TopicToken{
 				Value:     string(b[from:i]),
 				MatchType: ExactMatch,
 			})
@@ -82,12 +82,12 @@ func ParseTopic(b []byte) (topics []TopicMatch, hasWildcard bool, err error) {
 		i++
 	}
 	if from < len(b) || b[last] == '/' {
-		topics = append(topics, TopicMatch{
+		tokens = append(tokens, TopicToken{
 			Value:     string(b[from:i]),
 			MatchType: ExactMatch,
 		})
 	}
-	return topics, hasWildcard, nil
+	return tokens, hasWildcard, nil
 }
 
 // ParseTopicName parses a given bytes slice into a slice of strings

@@ -26,6 +26,9 @@ type Feed struct {
 	// holds newly subsribed channels until they are added to cases
 	pendingMu   sync.Mutex
 	pendingSubs []reflect.SelectCase
+
+	// holds topic name
+	topic string
 }
 
 const firstSubSendCase = 2
@@ -33,8 +36,9 @@ const firstSubSendCase = 2
 var emptySelectCase reflect.SelectCase
 
 //NewFeed ...
-func NewFeed() *Feed {
+func NewFeed(topic string) *Feed {
 	f := new(Feed)
+	f.topic = topic
 	f.removeSubCh = make(chan *sub)
 	f.sendLock = make(chan struct{}, 1)
 	f.sendLock <- struct{}{}

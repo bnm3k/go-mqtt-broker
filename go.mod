@@ -3,6 +3,7 @@ module github.com/nagamocha3000/go-mqtt-broker
 go 1.13
 
 require (
+	github.com/cornelk/hashmap v1.0.1
 	github.com/gofrs/uuid v3.3.0+incompatible // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
 	github.com/pkg/errors v0.9.1
