@@ -19,7 +19,7 @@ type PublishEvent struct {
 // Subscription ...
 type Subscription struct {
 	feed            *Feed
-	channel         chan<- *PublishEvent
+	channel         chan<- PublishEvent
 	onceUnsubscribe sync.Once
 }
 
@@ -67,7 +67,7 @@ func NewFeed(topic string) *Feed {
 }
 
 // Subscribe ...
-func (f *Feed) Subscribe(ch chan<- *PublishEvent) *Subscription {
+func (f *Feed) Subscribe(ch chan<- PublishEvent) *Subscription {
 	sub := &Subscription{
 		feed:    f,
 		channel: ch,
@@ -120,7 +120,7 @@ func (f *Feed) Publish(ctx context.Context, rawPkt *p.PublishPacket) (nSent int)
 	f.pendingMu.Unlock()
 
 	// set up rval & the send on all channels
-	rval := reflect.ValueOf(&PublishEvent{
+	rval := reflect.ValueOf(PublishEvent{
 		Topic:  f.topic,
 		RawPkt: rawPkt,
 	})
@@ -180,7 +180,7 @@ func (f *Feed) Publish(ctx context.Context, rawPkt *p.PublishPacket) (nSent int)
 	return nSent
 }
 
-func caseFindIndex(cs []reflect.SelectCase, ch chan<- *PublishEvent) int {
+func caseFindIndex(cs []reflect.SelectCase, ch chan<- PublishEvent) int {
 	for i := firstSubSendCase; i < len(cs); i++ {
 		if cs[i].Chan.Interface() == ch {
 			return i

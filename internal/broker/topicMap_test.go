@@ -322,7 +322,7 @@ func TestTopicMap_GetFeedsThatMatchTopic_AllPermutations(t *testing.T) {
 
 	allWildcardPermutations := generateTokenWildcardPermutations(topic)
 
-	ch := make(chan *PublishEvent, len(allWildcardPermutations))
+	ch := make(chan PublishEvent, len(allWildcardPermutations))
 	m := NewTopicMap()
 	for _, tp := range allWildcardPermutations {
 		feed, alreadyPresent := m.InitFeedByTopic(tp.str, tp.tokens)
