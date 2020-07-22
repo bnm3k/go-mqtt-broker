@@ -12,97 +12,64 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func generateTokenWildcardPermsSingleLevel(tokens []TopicToken) [][]TopicToken {
-	// minor todo, make more space efficent
-	if len(tokens) == 1 {
-		return [][]TopicToken{
-			{TopicToken{Value: "+", MatchType: SingleLevelMatch}},
-			{tokens[0]},
-		}
-	}
-	var perms [][]TopicToken
-	childPerms := generateTokenWildcardPermsSingleLevel(tokens[1:])
-
-	for _, childPerm := range childPerms {
-		permWithToken := make([]TopicToken, len(childPerm)+1)
-		permWithToken[0] = tokens[0]
-		copy(permWithToken[1:], childPerm)
-		permWithPlus := make([]TopicToken, len(childPerm)+1)
-		permWithPlus[0] = TopicToken{Value: "+", MatchType: SingleLevelMatch}
-		copy(permWithPlus[1:], childPerm)
-		perms = append(perms, permWithToken, permWithPlus)
-	}
-	return perms
-}
-
-func generateTokenWildcardPermsMultiLevel(tokens []TopicToken) [][]TopicToken {
-
-	perms := make([][]TopicToken, len(tokens)+1)
-
-	for i := len(tokens); i >= 0; i-- {
-		ts := tokens[:i]
-		p := make([]TopicToken, len(ts)+1)
-		copy(p, ts)
-		p[len(p)-1] = TopicToken{
-			MatchType: MultiLevelMatch,
-			Value:     "#",
-		}
-		perms[i] = p
-	}
-
-	return perms
-}
-
-func concatenateTopicToken(tokens []TopicToken) string {
-	var strB strings.Builder
-	strB.WriteString(tokens[0].Value)
-	for _, t := range tokens[1:] {
-		strB.WriteByte('/')
-		strB.WriteString(t.Value)
-	}
-	return strB.String()
-}
-
 type genTopic struct {
 	str    string
 	tokens []TopicToken
 }
 
-func generateTokenWildcardPermutations(topic []byte) []genTopic {
+func generateTokenWildcardPermutations(topic []byte) (generatedTopics []genTopic) {
 	tokens, hasWildcards, err := ParseTopic(topic)
 	if hasWildcards || err != nil {
 		panic(fmt.Errorf("invalid topic for generateTokenWildcardPermutations:\n\t%s", string(topic)))
 	}
 
-	// num should be 2^t where t is the number of tokens
-	singleLevelPs := generateTokenWildcardPermsSingleLevel(tokens)
+	noTopics := (1 << len(tokens)) + (2 << len(tokens)) - 1
+	generatedTopics = make([]genTopic, 0, noTopics)
 
-	// num expected todo?
-	multiLevelPs := make(map[string][]TopicToken)
-	for _, sts := range singleLevelPs {
-		mPs := generateTokenWildcardPermsMultiLevel(sts)
-		for _, mts := range mPs {
-			str := concatenateTopicToken(mts)
-			multiLevelPs[str] = mts
+	// temp
+	temp := make([]TopicToken, 0, len(tokens)+1)
+
+	// string builder len
+	strBLen := 0
+	for _, t := range tokens {
+		strBLen += len(t.Value)
+	}
+	strBLen += (len(tokens) + 1)
+
+	// for converting TopicToken slices to a single string
+	stringifyTopicToken := func(tokens []TopicToken) string {
+		var strB strings.Builder
+		strB.Grow(strBLen)
+		strB.WriteString(tokens[0].Value)
+		for _, t := range tokens[1:] {
+			strB.WriteByte('/')
+			strB.WriteString(t.Value)
 		}
+		return strB.String()
 	}
 
-	var genTopics []genTopic
-	for _, ts := range singleLevelPs {
-		genTopics = append(genTopics, genTopic{
-			str:    concatenateTopicToken(ts),
-			tokens: ts,
-		})
-	}
-	for s, ts := range multiLevelPs {
-		genTopics = append(genTopics, genTopic{
-			str:    s,
-			tokens: ts,
-		})
+	var traverse func(tokens []TopicToken, temp []TopicToken, emitTokens func([]TopicToken))
+	traverse = func(tokens []TopicToken, temp []TopicToken, emitTokens func([]TopicToken)) {
+		if len(tokens) == 0 {
+			emitTokens(temp)
+		} else {
+			traverse(tokens[1:], append(temp, tokens[0]), emitTokens)
+			traverse(tokens[1:], append(temp, TopicToken{Value: "+", MatchType: SingleLevelMatch}), emitTokens)
+		}
+		emitTokens(append(temp, TopicToken{Value: "#", MatchType: MultiLevelMatch}))
 	}
 
-	// combine both and return
-	return genTopics
+	// 'traverse' while emitting
+	traverse(tokens, temp, func(temptTs []TopicToken) {
+		ts := make([]TopicToken, len(temptTs))
+		copy(ts, temptTs)
+		generatedTopics = append(generatedTopics, genTopic{
+			str:    stringifyTopicToken(ts),
+			tokens: ts,
+		})
+	})
+
+	return generatedTopics
 }
 
 func generateRandomTopics(n int) []string {
